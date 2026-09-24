@@ -565,13 +565,14 @@ function buildCars(){
 const PED = MeridianPedestrians.createFactory({ THREE, helpers: geom });
 const PED_RIG = MeridianPedestrians.RIG;
 const PED_LIMIT=HALF-6;   // walkers turn around here — the ground plane itself ends at ±HALF
-let pedRig=null;          // { torso, head, armL, armR, legL, legR, setColors, commitColors }
-let pedTorso=null,pedHead=null,pedHair=null,pedArmL=null,pedArmR=null,pedLegL=null,pedLegR=null;
+// Rig: 14 InstancedMesh — chest/hips/head/hair, upperArm/foreArm/hand ×2,
+// thigh/shin ×2. Все матрицы пишет pedRig.writeFigure(...) из
+// assets/models/pedestrian.js; updatePeds двигает пешехода по улице и
+// передаёт позу (swing / bob / yaw).
+let pedRig=null;
 function buildPeds(){
   const N=54;
   pedRig=PED.createRig(scene,N);
-  pedTorso=pedRig.torso;pedHead=pedRig.head;pedHair=pedRig.hair;pedArmL=pedRig.armL;pedArmR=pedRig.armR;
-  pedLegL=pedRig.legL;pedLegR=pedRig.legR;
   const PAL=PED.palettes;
   for(let i=0;i<N;i++){
     // Interior road lines only (1…GRID-1): line 0 and line GRID lie exactly on the border of the ground
@@ -1118,12 +1119,6 @@ function writeCarInstances(){
 }
 
 /* ---------- crowd: walk cycle written straight into the six instanced rig parts ---------- */
-function limbInstance(mesh,i,p,pivX,pivY,swing,bob,scl){
-  const c=Math.cos(p.yaw),s=Math.sin(p.yaw);
-  _qv.set(p.x+pivX*c,pivY+bob,p.z-pivX*s);          // pivot rotated into world space
-  _qx.setFromAxisAngle(_X,swing);_ql.copy(_qy).multiply(_qx);
-  mesh.setMatrixAt(i,_m4c.compose(_qv,_ql,scl?_sv.set(scl[0],scl[1],scl[2]):_sv));
-}
 function updatePeds(dt,t){
   for(let i=0;i<peds.length;i++){
     const p=peds[i];let vx=0,vz=0;
@@ -1146,21 +1141,12 @@ function updatePeds(dt,t){
     }
     p.x=clamp(p.x,-PED_LIMIT,PED_LIMIT);p.z=clamp(p.z,-PED_LIMIT,PED_LIMIT);
     if(vx||vz)p.yaw=angLerp(p.yaw,Math.atan2(vx,vz),1-Math.pow(0.002,dt));   // face where they walk
-    // Per-instance архетип: пивоты (hipY/shoulderY/headY/shX/hipX), скейлы и
-    // цвет волос уже посчитаны в setInstance. Здесь — только матрицы.
+    // Поза: swing (рад) вокруг X качает руки и ноги в противофазе, bob (м)
+    // поднимает торс на полшага, yaw разворачивает всю фигуру. Всё в
+    // локальной системе пешехода — writeFigure живёт в pedestrian.js.
     const A=pedRig.instanceData[i]||PED.archetypes[0];
     const sw=Math.sin(t*6+p.phase)*0.7,bob=Math.abs(Math.cos(t*6+p.phase))*0.03;
-    _qy.setFromAxisAngle(_Y,p.yaw);
-    pedTorso.setMatrixAt(i,_m4a.compose(_qv.set(p.x,A.hipY,p.z),_qy,
-                                        _sv.set(A.torsoScale[0],A.torsoScale[1],A.torsoScale[2])));
-    pedHead .setMatrixAt(i,_m4b.compose(_qv.set(p.x,A.headY,p.z),_qy,
-                                        _sv.set(A.headScale[0],A.headScale[1],A.headScale[2])));
-    pedHair .setMatrixAt(i,_m4c.compose(_qv.set(p.x,A.headY+A.hairYOff,p.z),_qy,
-                                        _sv.set(A.hairScale[0],A.hairScale[1],A.hairScale[2])));
-    limbInstance(pedArmL,i,p,-A.shX,A.shoulderY,-sw,bob,A.armScale);
-    limbInstance(pedArmR,i,p, A.shX,A.shoulderY, sw,bob,A.armScale);
-    limbInstance(pedLegL,i,p,-A.hipX,A.hipY,     sw,bob,A.legScale);
-    limbInstance(pedLegR,i,p, A.hipX,A.hipY,    -sw,bob,A.legScale);
+    pedRig.writeFigure(i,A,p.x,p.z,{swing:sw,bob:bob,yaw:p.yaw});
   }
   for(const m of pedRig.meshes)m.instanceMatrix.needsUpdate=true;
 }
