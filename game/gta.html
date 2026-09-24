@@ -566,11 +566,11 @@ const PED = MeridianPedestrians.createFactory({ THREE, helpers: geom });
 const PED_RIG = MeridianPedestrians.RIG;
 const PED_LIMIT=HALF-6;   // walkers turn around here — the ground plane itself ends at ±HALF
 let pedRig=null;          // { torso, head, armL, armR, legL, legR, setColors, commitColors }
-let pedTorso=null,pedHead=null,pedArmL=null,pedArmR=null,pedLegL=null,pedLegR=null;
+let pedTorso=null,pedHead=null,pedHair=null,pedArmL=null,pedArmR=null,pedLegL=null,pedLegR=null;
 function buildPeds(){
   const N=54;
   pedRig=PED.createRig(scene,N);
-  pedTorso=pedRig.torso;pedHead=pedRig.head;pedArmL=pedRig.armL;pedArmR=pedRig.armR;
+  pedTorso=pedRig.torso;pedHead=pedRig.head;pedHair=pedRig.hair;pedArmL=pedRig.armL;pedArmR=pedRig.armR;
   pedLegL=pedRig.legL;pedLegR=pedRig.legR;
   const PAL=PED.palettes;
   for(let i=0;i<N;i++){
@@ -582,7 +582,7 @@ function buildPeds(){
     let x,z,yaw;
     if(axis===0){x=-HALF+lineIdx*CELL+side;z=along;yaw=dir>0?0:Math.PI;}else{z=-HALF+lineIdx*CELL-side;x=along;yaw=dir>0?Math.PI/2:-Math.PI/2;}
     const shirt=PAL.shirt[(rng()*PAL.shirt.length)|0],skin=PAL.skin[(rng()*PAL.skin.length)|0];
-    pedRig.setColors(i,shirt,skin);
+    pedRig.setInstance(i,i%PED.archetypes.length,shirt,skin);
     peds.push({x,z,yaw,axis,dir,speed:rand(1.1,1.9),phase:rng()*6.28,vx:0,vz:0});   // vx/vz = bump impulse
   }
   pedRig.commitColors();
@@ -1122,7 +1122,7 @@ function limbInstance(mesh,i,p,pivX,pivY,swing,bob,scl){
   const c=Math.cos(p.yaw),s=Math.sin(p.yaw);
   _qv.set(p.x+pivX*c,pivY+bob,p.z-pivX*s);          // pivot rotated into world space
   _qx.setFromAxisAngle(_X,swing);_ql.copy(_qy).multiply(_qx);
-  mesh.setMatrixAt(i,_m4c.compose(_qv,_ql,scl||_sv));
+  mesh.setMatrixAt(i,_m4c.compose(_qv,_ql,scl?_sv.set(scl[0],scl[1],scl[2]):_sv));
 }
 function updatePeds(dt,t){
   for(let i=0;i<peds.length;i++){
@@ -1137,8 +1137,8 @@ function updatePeds(dt,t){
       const k=Math.pow(0.015,dt);p.vx*=k;p.vz*=k;
       if(Math.abs(p.vx)<.04&&Math.abs(p.vz)<.04){p.vx=0;p.vz=0;}
     }
-    // Border reached → about-turn (yaw follows below, so it reads as a real turn), and clamp hard so a
-    // shove from the player can never launch a walker past the edge of the world either.
+    // Border reached → about-turn, and clamp hard so a shove from the player can never launch a walker
+    // past the edge of the world either.
     const out=p.axis===0?p.z:p.x;
     if(Math.abs(out)>PED_LIMIT){
       p.dir*=-1;
@@ -1146,17 +1146,23 @@ function updatePeds(dt,t){
     }
     p.x=clamp(p.x,-PED_LIMIT,PED_LIMIT);p.z=clamp(p.z,-PED_LIMIT,PED_LIMIT);
     if(vx||vz)p.yaw=angLerp(p.yaw,Math.atan2(vx,vz),1-Math.pow(0.002,dt));   // face where they walk
+    // Per-instance архетип: пивоты (hipY/shoulderY/headY/shX/hipX), скейлы и
+    // цвет волос уже посчитаны в setInstance. Здесь — только матрицы.
+    const A=pedRig.instanceData[i]||PED.archetypes[0];
     const sw=Math.sin(t*6+p.phase)*0.7,bob=Math.abs(Math.cos(t*6+p.phase))*0.03;
     _qy.setFromAxisAngle(_Y,p.yaw);
-    pedTorso.setMatrixAt(i,_m4a.compose(_qv.set(p.x,PED_RIG.hip,p.z),_qy,_ONE));
-    // Head geometry is centred on its own origin, so the instance Y *is* the head centre (top ≈ 1.79 m).
-    pedHead.setMatrixAt(i,_m4b.compose(_qv.set(p.x,PED_RIG.head,p.z),_qy,_ONE));
-    limbInstance(pedArmL,i,p,-PED_RIG.shX,PED_RIG.shoulder,-sw,bob,_ONE);
-    limbInstance(pedArmR,i,p, PED_RIG.shX,PED_RIG.shoulder, sw,bob,_ONE);
-    limbInstance(pedLegL,i,p,-PED_RIG.hipX,PED_RIG.hip,     sw,bob,_ONE);
-    limbInstance(pedLegR,i,p, PED_RIG.hipX,PED_RIG.hip,    -sw,bob,_ONE);
+    pedTorso.setMatrixAt(i,_m4a.compose(_qv.set(p.x,A.hipY,p.z),_qy,
+                                        _sv.set(A.torsoScale[0],A.torsoScale[1],A.torsoScale[2])));
+    pedHead .setMatrixAt(i,_m4b.compose(_qv.set(p.x,A.headY,p.z),_qy,
+                                        _sv.set(A.headScale[0],A.headScale[1],A.headScale[2])));
+    pedHair .setMatrixAt(i,_m4c.compose(_qv.set(p.x,A.headY+A.hairYOff,p.z),_qy,
+                                        _sv.set(A.hairScale[0],A.hairScale[1],A.hairScale[2])));
+    limbInstance(pedArmL,i,p,-A.shX,A.shoulderY,-sw,bob,A.armScale);
+    limbInstance(pedArmR,i,p, A.shX,A.shoulderY, sw,bob,A.armScale);
+    limbInstance(pedLegL,i,p,-A.hipX,A.hipY,     sw,bob,A.legScale);
+    limbInstance(pedLegR,i,p, A.hipX,A.hipY,    -sw,bob,A.legScale);
   }
-  for(const m of [pedTorso,pedHead,pedArmL,pedArmR,pedLegL,pedLegR])m.instanceMatrix.needsUpdate=true;
+  for(const m of pedRig.meshes)m.instanceMatrix.needsUpdate=true;
 }
 
 /* ---------- streetlight pooling (nearest to camera) ---------- */
