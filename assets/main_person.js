@@ -1,3 +1,445 @@
+/* assets/main_person.js — procedural hero rig.
+ *
+ * Shared by game/gta.html (chase-cam sandbox) and assets/main_person.html (pose workbench).
+ * Loaded as a CLASSIC script, not an ES module: a file:// page may not import a sibling .js
+ * (Chrome/Edge treat file:// as an opaque origin and block the module fetch), while a classic
+ * <script src> from the same directory still loads. Consequence: the file cannot import three
+ * itself — the caller hands in THREE (and RoundedBoxGeometry; falls back to plain BoxGeometry).
+ *
+ *   const hero = MainPerson.createHero({ THREE, RoundedBoxGeometry });
+ *   scene.add(hero.group);
+ *   hero.update(dt, { speed, sprint });          // speed-driven (gta)
+ *   // — or, for pose work (main_person.html):
+ *   hero.applyPose(hero.poseGait(t, hero.WALKS[0], false));
+ *   hero.breathe(t, dt);
+ *
+ * Units: metres, +Y up, +Z forward, feet at y = 0.
+ * Contract: methodology/contracts/character-anatomy.md (C-ANA-1…4).
+ */
+(function () {
+  'use strict';
+
+  function createHero(opts) {
+    const THREE = opts.THREE;
+    const RBox = opts.RoundedBoxGeometry ||
+      function (w, h, d) { return new THREE.BoxGeometry(w, h, d); };
+
+    /* ---- parameters (metres; a ~1.8 m figure) ----------------------------- */
+    const P = {
+      hipX: 0.1035,
+      shoulderX: 0.216,
+      y: {
+        ankle: 0.189, knee: 0.4275, hip: 0.81,
+        wrist: 0.774, elbow: 0.99, shoulder: 1.2375,
+        chest: 1.035, neck: 1.3275, head: 1.5975
+      },
+      r: {
+        thighTop: 0.09, thighBot: 0.0765, knee: 0.0765,
+        shinTop: 0.07425, shinBot: 0.063,
+        shoulder: 0.0855, upperArmTop: 0.06975, upperArmBot: 0.063,
+        elbow: 0.0675, foreArmTop: 0.063, foreArmBot: 0.054,
+        hand: 0.0675, neckTop: 0.0675, neckBot: 0.07875,
+        head: [0.342, 0.369, 0.351],
+        hair: [0.369, 0.153, 0.378],
+        eye: 0.0405, pupil: 0.0171, irisR: 0.02475, irisT: 0.0054
+      },
+      torso: [
+        [0.783, 0.846, 0.189, 0.189, 'puffer'],
+        [0.846, 1.125, 0.189, 0.207, 'puffer'],
+        [1.125, 1.323, 0.207, 0.135, 'puffer'],
+        [1.323, 1.395, 0.135, 0.1215, 'puffer']
+      ],
+      torsoLimeY: [1.224, 1.278, 0.17775],
+      torsoHood: { r: 0.189, y: 1.251, z: -0.099, thetaLen: 0.78, tilt: -0.35 },
+      torsoPocket: { w: 0.225, h: 0.117, d: 0.09, y: 0.936, z: 0.171 },
+      zipper: { yFrom: 1.008, yTo: 1.30725, step: 0.0297, size: [0.0225, 0.0279, 0.0225] },
+      drawstrings: { x: 0.05625, y: 1.188, z: 0.1935, len: 0.216, tilt: -0.58,
+                     tipY: 1.098, tipZ: 0.2529, r: 0.0099, tipR: 0.0189 },
+      face: {
+        eyeX: 0.072, eyeY: 0.009, eyeZ: 0.18,
+        // Iris and pupil are pushed ~3 mm further out from the sclera surface — at the old Z the
+        // torus tube straddled the sphere and read as a flickering sliver from oblique angles.
+        pupilZ: 0.213, irisZ: 0.219,
+        browY: 0.072, browZ: 0.189, browSize: [0.0765, 0.02025, 0.027], browTilt: 0.12,
+        noseY: -0.027, noseZ: 0.198, noseR: 0.0225, noseH: 0.054,
+        mouthY: -0.0945, mouthZ: 0.189, mouthSize: [0.072, 0.0135, 0.0225],
+        hairY: 0.1575, hairZ: -0.0135
+      },
+      shoe: {
+        soleW: 0.153, soleH: 0.0495, soleD: 0.279,
+        upperW: 0.135, upperD: 0.207, upperZ: -0.009,
+        toeR: 0.0675, toeZ: 0.09,
+        heelW: 0.117, heelH: 0.0585, heelD: 0.045, heelZ: -0.10575,
+        lace: { w: 0.0855, h: 0.01575, d: 0.0225, count: 3, spread: 0.03825, startZ: -0.063 }
+      }
+    };
+
+    const L = {
+      thigh: P.y.hip - P.y.knee,
+      shin: P.y.knee - P.y.ankle,
+      upperArm: P.y.shoulder - P.y.elbow,
+      foreArm: P.y.elbow - P.y.wrist
+    };
+
+    /* ---- gait configs ---------------------------------------------------- */
+    const WALKS = [
+      { name: 'normal',    freq: 5.0, hipAmp: 0.55, kneeAmp: 0.70, baseKnee: 0.05,
+        armAmp: 0.50, elbowBase: -0.28, elbowFlex: 0.35,
+        lean: 0.00, bob: 0.045, hipTwist: 0.06, bodyTwist: 0.08, footRoll: 0.15 },
+      { name: 'stroll',    freq: 3.2, hipAmp: 0.36, kneeAmp: 0.48, baseKnee: 0.06,
+        armAmp: 0.26, elbowBase: -0.20, elbowFlex: 0.22,
+        lean: 0.00, bob: 0.028, hipTwist: 0.04, bodyTwist: 0.05, footRoll: 0.10 },
+      { name: 'march',     freq: 4.5, hipAmp: 0.80, kneeAmp: 0.95, baseKnee: 0.10,
+        armAmp: 0.90, elbowBase: -0.55, elbowFlex: 0.60,
+        lean: 0.00, bob: 0.070, hipTwist: 0.03, bodyTwist: 0.04, footRoll: 0.18 },
+      { name: 'springy',   freq: 5.5, hipAmp: 0.62, kneeAmp: 0.85, baseKnee: 0.06,
+        armAmp: 0.60, elbowBase: -0.32, elbowFlex: 0.40,
+        lean: 0.02, bob: 0.095, hipTwist: 0.07, bodyTwist: 0.09, footRoll: 0.16 },
+      { name: 'mincing',   freq: 7.8, hipAmp: 0.32, kneeAmp: 0.55, baseKnee: 0.08,
+        armAmp: 0.28, elbowBase: -0.40, elbowFlex: 0.30,
+        lean: 0.02, bob: 0.020, hipTwist: 0.05, bodyTwist: 0.06, footRoll: 0.22 }
+    ];
+
+    const RUNS = [
+      { name: 'jog',       freq: 9.5,  hipAmp: 0.95, kneeAmp: 0.85, baseKnee: 0.08,
+        armAmp: 1.05, elbowBase: -0.85, elbowFlex: 0.55,
+        lean: -0.14, bob: 0.085, hipTwist: 0.10, bodyTwist: 0.14, footRoll: 0.20 },
+      { name: 'sprint',    freq: 12.5, hipAmp: 1.10, kneeAmp: 1.00, baseKnee: 0.10,
+        armAmp: 1.25, elbowBase: -1.00, elbowFlex: 0.65,
+        lean: -0.28, bob: 0.110, hipTwist: 0.12, bodyTwist: 0.16, footRoll: 0.24 },
+      { name: 'longStride',freq: 8.0,  hipAmp: 1.15, kneeAmp: 0.70, baseKnee: 0.06,
+        armAmp: 0.85, elbowBase: -0.70, elbowFlex: 0.45,
+        lean: -0.10, bob: 0.095, hipTwist: 0.14, bodyTwist: 0.18, footRoll: 0.18 },
+      { name: 'highKnee',  freq: 10.5, hipAmp: 1.25, kneeAmp: 1.00, baseKnee: 0.25,
+        armAmp: 1.10, elbowBase: -1.05, elbowFlex: 0.60,
+        lean: -0.05, bob: 0.100, hipTwist: 0.08, bodyTwist: 0.10, footRoll: 0.28 }
+    ];
+
+    /* ---- palette / materials --------------------------------------------- */
+    const COL = {
+      puffer: 0x2c7fb6, lime: 0x4ade80, olive: 0x0a4b52, sole: 0x1e6f9a,
+      hair: 0x2a1a12, skin: 0xecc4a4, white: 0xf2f2f0, ink: 0x15181a
+    };
+    const std = function (c, o) {
+      return new THREE.MeshStandardMaterial(Object.assign(
+        { color: c, roughness: 0.62, metalness: 0.04 }, o || {}));
+    };
+    const M = {
+      puffer: std(COL.puffer, { roughness: 0.72 }),
+      hood:   std(COL.puffer, { roughness: 0.72, side: THREE.DoubleSide }),
+      lime:   std(COL.lime,   { roughness: 0.55, emissive: 0x1a5a28, emissiveIntensity: 0.18 }),
+      olive:  std(COL.olive,  { roughness: 0.85 }),
+      sole:   std(COL.sole,   { roughness: 0.62 }),
+      hair:   std(COL.hair,   { roughness: 0.55 }),
+      skin:   std(COL.skin,   { roughness: 0.55 }),
+      white:  std(COL.white,  { roughness: 0.45 }),
+      ink:    std(COL.ink,    { roughness: 0.35 })
+    };
+
+    /* ---- geometry sugar -------------------------------------------------- */
+    const SPH = function (r, w, h) { return new THREE.SphereGeometry(r, w || 28, h || 20); };
+    const CYL = function (rt, rb, h, s) { return new THREE.CylinderGeometry(rt, rb, h, s || 24); };
+    const BOX = function (w, h, d) { return new THREE.BoxGeometry(w, h, d); };
+    const TOR = function (r, t, s, ts) { return new THREE.TorusGeometry(r, t, s || 12, ts || 36); };
+    const CON = function (r, h, s) { return new THREE.ConeGeometry(r, h, s || 20); };
+
+    function addTo(parent, geo, mat, x, y, z) {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x || 0, y || 0, z || 0);
+      m.castShadow = true; m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    }
+    function addLimb(parent, length, rTop, rBot, mat) {
+      return addTo(parent, CYL(rTop, rBot, length), mat, 0, -length / 2, 0);
+    }
+    function addTorsoSection(parent, yB, yT, rB, rT, mat, chestWorldY) {
+      return addTo(parent, CYL(rT, rB, yT - yB), mat, 0, (yB + yT) / 2 - chestWorldY, 0);
+    }
+
+    /* ---- skeleton -------------------------------------------------------- */
+    const wrapper = new THREE.Group();          // caller owns position + rotation.y here
+    const b = {};
+    b.body = new THREE.Group(); wrapper.add(b.body);
+
+    const relY = function (a, c) { return a - c; };
+
+    b.hips  = new THREE.Group(); b.hips.position.y  = P.y.hip; b.body.add(b.hips);
+    b.chest = new THREE.Group(); b.chest.position.y = relY(P.y.chest, P.y.hip); b.hips.add(b.chest);
+    b.neck  = new THREE.Group(); b.neck.position.y  = relY(P.y.neck, P.y.chest); b.chest.add(b.neck);
+    b.head  = new THREE.Group(); b.head.position.y  = relY(P.y.head, P.y.neck); b.neck.add(b.head);
+
+    b.upL = new THREE.Group(); b.upL.position.set(-P.shoulderX, relY(P.y.shoulder, P.y.chest), 0); b.chest.add(b.upL);
+    b.upR = new THREE.Group(); b.upR.position.set( P.shoulderX, relY(P.y.shoulder, P.y.chest), 0); b.chest.add(b.upR);
+    b.foL = new THREE.Group(); b.foL.position.y = -L.upperArm; b.upL.add(b.foL);
+    b.foR = new THREE.Group(); b.foR.position.y = -L.upperArm; b.upR.add(b.foR);
+    b.hdL = new THREE.Group(); b.hdL.position.y = -L.foreArm; b.foL.add(b.hdL);
+    b.hdR = new THREE.Group(); b.hdR.position.y = -L.foreArm; b.foR.add(b.hdR);
+
+    b.hipL  = new THREE.Group(); b.hipL.position.set(-P.hipX, 0, 0); b.hips.add(b.hipL);
+    b.hipR  = new THREE.Group(); b.hipR.position.set( P.hipX, 0, 0); b.hips.add(b.hipR);
+    b.shinL = new THREE.Group(); b.shinL.position.y = -L.thigh; b.hipL.add(b.shinL);
+    b.shinR = new THREE.Group(); b.shinR.position.y = -L.thigh; b.hipR.add(b.shinR);
+    b.ftL   = new THREE.Group(); b.ftL.position.y = -L.shin; b.shinL.add(b.ftL);
+    b.ftR   = new THREE.Group(); b.ftR.position.y = -L.shin; b.shinR.add(b.ftR);
+
+    /* ---- meshes ---------------------------------------------------------- */
+    [1, -1].forEach(function (side) {
+      const hip = side < 0 ? b.hipL : b.hipR;
+      const shn = side < 0 ? b.shinL : b.shinR;
+      const ft  = side < 0 ? b.ftL : b.ftR;
+
+      addLimb(hip, L.thigh, P.r.thighTop, P.r.thighBot, M.olive);
+      addTo(shn, SPH(P.r.knee), M.olive, 0, 0, 0);
+      addLimb(shn, L.shin, P.r.shinTop, P.r.shinBot, M.olive);
+      addTo(ft, SPH(P.r.shinBot + 0.0045, 18, 14), M.puffer, 0, 0, 0);
+
+      const S = P.shoe;
+      const yBase = -P.y.ankle;
+      const upperH = P.y.ankle - S.soleH;
+
+      addTo(ft, BOX(S.soleW, S.soleH, S.soleD), M.sole, 0, yBase + S.soleH / 2, 0);
+      addTo(ft, BOX(S.upperW, upperH, S.upperD), M.puffer,
+            0, yBase + S.soleH + upperH / 2, S.upperZ);
+      const toe = addTo(ft, SPH(S.toeR, 22, 16), M.puffer,
+                        0, yBase + S.soleH + upperH * 0.35, S.toeZ);
+      toe.scale.set(1, 0.82, 1);
+      addTo(ft, BOX(S.heelW, S.heelH, S.heelD), M.puffer,
+            0, yBase + S.soleH + upperH * 0.75, S.heelZ);
+      for (let i = 0; i < S.lace.count; i++) {
+        addTo(ft, BOX(S.lace.w, S.lace.h, S.lace.d), M.lime,
+              0, yBase + S.soleH + upperH - 0.0135,
+              S.lace.startZ + i * S.lace.spread);
+      }
+    });
+
+    for (let i = 0; i < P.torso.length; i++) {
+      const t = P.torso[i];
+      addTorsoSection(b.chest, t[0], t[1], t[2], t[3], M[t[4]], P.y.chest);
+    }
+    addTorsoSection(b.chest, P.torsoLimeY[0], P.torsoLimeY[1],
+                    P.torsoLimeY[2], P.torsoLimeY[2], M.lime, P.y.chest);
+    addTo(b.neck, CYL(P.r.neckTop, P.r.neckBot, 0.18), M.skin, 0, 0, 0);
+
+    (function () {
+      const H = P.torsoHood;
+      const hood = addTo(b.chest,
+        new THREE.SphereGeometry(H.r, 32, 22, 0, Math.PI * 2, 0, Math.PI * H.thetaLen),
+        M.hood, 0, H.y - P.y.chest, H.z);
+      hood.rotation.x = H.tilt;
+    })();
+    (function () {
+      const K = P.torsoPocket;
+      addTo(b.chest, BOX(K.w, K.h, K.d), M.puffer, 0, K.y - P.y.chest, K.z);
+    })();
+
+    function torsoRadius(y) {
+      for (let i = 0; i < P.torso.length; i++) {
+        const t = P.torso[i];
+        if (y >= t[0] && y <= t[1]) return t[2] + (t[3] - t[2]) * ((y - t[0]) / (t[1] - t[0]));
+      }
+      return P.torso[P.torso.length - 1][3];
+    }
+    (function () {
+      const Z = P.zipper;
+      for (let y = Z.yFrom; y <= Z.yTo; y += Z.step) {
+        addTo(b.chest, BOX(Z.size[0], Z.size[1], Z.size[2]), M.lime,
+              0, y - P.y.chest, torsoRadius(y) - 0.0036);
+      }
+    })();
+    (function () {
+      const D = P.drawstrings;
+      [1, -1].forEach(function (s) {
+        const str = addTo(b.chest, CYL(D.r, D.r, D.len), M.white,
+                          s * D.x, D.y - P.y.chest, D.z);
+        str.rotation.x = D.tilt;
+        addTo(b.chest, SPH(D.tipR, 14, 10), M.lime,
+              s * D.x, D.tipY - P.y.chest, D.tipZ);
+      });
+    })();
+
+    [1, -1].forEach(function (side) {
+      const up = side < 0 ? b.upL : b.upR;
+      const fo = side < 0 ? b.foL : b.foR;
+      const hd = side < 0 ? b.hdL : b.hdR;
+
+      addTo(up, SPH(P.r.shoulder), M.puffer, 0, 0, 0);
+      addLimb(up, L.upperArm, P.r.upperArmTop, P.r.upperArmBot, M.puffer);
+      const band1 = addTo(up, TOR(P.r.upperArmTop - 0.00225, 0.0126), M.lime,
+                          0, -L.upperArm * 0.30, 0);
+      band1.rotation.x = Math.PI / 2;
+
+      addTo(fo, SPH(P.r.elbow), M.puffer, 0, 0, 0);
+      addLimb(fo, L.foreArm, P.r.foreArmTop, P.r.foreArmBot, M.puffer);
+      const band2 = addTo(fo, TOR(P.r.foreArmBot + 0.00225, 0.0153), M.lime,
+                          0, -L.foreArm * 0.75, 0);
+      band2.rotation.x = Math.PI / 2;
+
+      addTo(hd, SPH(P.r.hand), M.skin, 0, 0, 0);
+    });
+
+    addTo(b.head, new RBox(P.r.head[0], P.r.head[1], P.r.head[2], 6, 0.081), M.skin, 0, 0, 0);
+    addTo(b.head, new RBox(P.r.hair[0], P.r.hair[1], P.r.hair[2], 8, 0.063), M.hair,
+          0, P.face.hairY, P.face.hairZ);
+
+    /* Eye: sclera + pupil + iris, plus an eyelid dome that BLINKS BY SLIDING, never by scaling.
+       The old blink scaled the whole eye group in Y; that crushed the iris torus into a horizontal
+       sliver and let the sclera surface cross the torus, so a "blink" read as a stray line at
+       oblique view angles — the sliver was still there when the eye was "open". The lid below is
+       a shallow skin dome parked above the sclera; a blink brings it down to cover the eye. */
+    b.eyeL = new THREE.Group(); b.eyeL.position.set(-P.face.eyeX, P.face.eyeY, 0); b.head.add(b.eyeL);
+    b.eyeR = new THREE.Group(); b.eyeR.position.set( P.face.eyeX, P.face.eyeY, 0); b.head.add(b.eyeR);
+    const LID_OPEN_Y = P.r.eye * 1.4;      // parked clear above the sclera
+    [b.eyeL, b.eyeR].forEach(function (grp) {
+      addTo(grp, SPH(P.r.eye, 22, 16), M.white, 0, 0, P.face.eyeZ);
+      const pupil = addTo(grp, CYL(P.r.pupil, P.r.pupil, 0.0225, 18), M.ink,
+                          0, 0, P.face.pupilZ);
+      pupil.rotation.x = Math.PI / 2;
+      // 18 radial segments, not 10: at 10 the tube cross-section reads as a polygon up close.
+      addTo(grp, TOR(P.r.irisR, P.r.irisT, 18, 26), M.lime, 0, 0, P.face.irisZ);
+      const lid = addTo(grp, SPH(P.r.eye * 1.02, 18, 12), M.skin, 0, LID_OPEN_Y, P.face.eyeZ);
+      lid.scale.set(1, 0.35, 1);
+      grp.userData.lid = lid;
+    });
+
+    [1, -1].forEach(function (s) {
+      const brow = addTo(b.head, BOX(P.face.browSize[0], P.face.browSize[1], P.face.browSize[2]),
+                         M.hair, s * P.face.eyeX, P.face.browY, P.face.browZ);
+      brow.rotation.z = s * P.face.browTilt;
+    });
+    (function () {
+      const nose = addTo(b.head, CON(P.face.noseR, P.face.noseH, 18), M.skin,
+                         0, P.face.noseY, P.face.noseZ);
+      nose.rotation.x = Math.PI / 2;
+      addTo(b.head, BOX(P.face.mouthSize[0], P.face.mouthSize[1], P.face.mouthSize[2]),
+            M.ink, 0, P.face.mouthY, P.face.mouthZ);
+    })();
+
+    /* ---- pose system ----------------------------------------------------- */
+    function emptyPose() {
+      return {
+        bodyY: 0, bodyRZ: 0,
+        hipsX: 0, hipsY: 0, hipsZ: 0,
+        chestX: 0, chestY: 0, chestZ: 0,
+        neckX: 0, neckY: 0, neckZ: 0,
+        headX: 0, headY: 0, headZ: 0,
+        hipLX: 0, hipLY: 0, hipLZ: 0,
+        hipRX: 0, hipRY: 0, hipRZ: 0,
+        shinLX: 0, shinRX: 0,
+        footLX: 0, footRX: 0,
+        upLX: 0, upLY: 0, upLZ: 0,
+        upRX: 0, upRY: 0, upRZ: 0,
+        foLX: 0, foRX: 0,
+        hdLX: 0, hdRX: 0
+      };
+    }
+    const POSE_KEYS = Object.keys(emptyPose());
+
+    function lerpPose(a, c, k) {
+      const out = {};
+      for (let i = 0; i < POSE_KEYS.length; i++) {
+        const key = POSE_KEYS[i];
+        out[key] = a[key] + (c[key] - a[key]) * k;
+      }
+      return out;
+    }
+
+    function applyPose(p) {
+      b.body.position.set(0, p.bodyY, 0);
+      b.body.rotation.set(0, 0, p.bodyRZ);
+
+      b.hips .rotation.set(p.hipsX,  p.hipsY,  p.hipsZ);
+      b.chest.rotation.set(p.chestX, p.chestY, p.chestZ);
+      b.neck .rotation.set(p.neckX,  p.neckY,  p.neckZ);
+      b.head .rotation.set(p.headX,  p.headY,  p.headZ);
+
+      b.hipL.rotation.set(p.hipLX, p.hipLY, p.hipLZ);
+      b.hipR.rotation.set(p.hipRX, p.hipRY, p.hipRZ);
+      b.shinL.rotation.set(p.shinLX, 0, 0);
+      b.shinR.rotation.set(p.shinRX, 0, 0);
+      b.ftL.rotation.set(p.footLX, 0, 0);
+      b.ftR.rotation.set(p.footRX, 0, 0);
+
+      b.upL.rotation.set(p.upLX, p.upLY, p.upLZ);
+      b.upR.rotation.set(p.upRX, p.upRY, p.upRZ);
+      b.foL.rotation.set(p.foLX, 0, 0);
+      b.foR.rotation.set(p.foRX, 0, 0);
+      b.hdL.rotation.set(p.hdLX, 0, 0);
+      b.hdR.rotation.set(p.hdRX, 0, 0);
+    }
+
+    function kneeOf(phase, A, base) {
+      const c = Math.cos(phase);
+      return base + 1.5 * A * Math.pow(Math.max(0, c), 0.7);
+    }
+
+    function poseIdle(t) {
+      const p = emptyPose();
+      const sway = Math.sin(t * 0.8);
+
+      const hip = 0.02, knee = 0.03;
+      p.hipLX = hip; p.hipRX = hip;
+      p.shinLX = knee; p.shinRX = knee;
+      p.footLX = -hip - knee;
+      p.footRX = -hip - knee;
+
+      p.upLX = 0.02; p.upLZ = -0.10;
+      p.upRX = 0.02; p.upRZ =  0.10;
+      p.foLX = -0.22; p.foRX = -0.22;
+
+      p.hipsY  = sway * 0.02;
+      p.chestY = sway * 0.03;
+      p.headY  = sway * 0.05;
+      p.headZ  = sway * 0.02;
+
+      p.bodyRZ = sway * 0.006;
+      return p;
+    }
+
+    function poseGait(t, cfg, isRun) {
+      const p = emptyPose();
+      const ph  = t * cfg.freq;
+      const phL = ph;
+      const phR = ph + Math.PI;
+
+      const hipLean = cfg.lean * 0.5;
+      p.hipsX = hipLean;
+      p.hipsY = Math.sin(ph) * cfg.hipTwist;
+
+      const hipL = Math.sin(phL) * cfg.hipAmp;
+      const hipR = Math.sin(phR) * cfg.hipAmp;
+      p.hipLX = hipL;
+      p.hipRX = hipR;
+
+      const kneeL = kneeOf(phL + Math.PI, cfg.kneeAmp, cfg.baseKnee);
+      const kneeR = kneeOf(phR + Math.PI, cfg.kneeAmp, cfg.baseKnee);
+      p.shinLX = kneeL;
+      p.shinRX = kneeR;
+
+      const rollL = Math.sin(phL) * cfg.footRoll;
+      const rollR = Math.sin(phR) * cfg.footRoll;
+      p.footLX = rollL - (hipLean + hipL) - kneeL;
+      p.footRX = rollR - (hipLean + hipR) - kneeR;
+
+      const armL = Math.sin(phR + 0.15);
+      const armR = Math.sin(phL + 0.15);
+      p.upLX = armL * cfg.armAmp;  p.upLZ = -0.12;
+      p.upRX = armR * cfg.armAmp;  p.upRZ =  0.12;
+      p.foLX = cfg.elbowBase - Math.max(0, armL) * cfg.elbowFlex;
+      p.foRX = cfg.elbowBase - Math.max(0, armR) * cfg.elbowFlex;
+      p.hdLX = isRun ? -0.15 : 0;
+      p.hdRX = isRun ? -0.15 : 0;
+
+      p.chestX = cfg.lean;
+      p.chestY = -Math.sin(ph) * cfg.bodyTwist;
+      p.neckX  = -cfg.lean * 0.6;
+      p.headY  = Math.sin(ph) * 0.03;
+
+      p.bodyY  = Math.abs(Math.sin(ph)) * cfg.bob;
+      p.bodyRZ = Math.sin(ph) * (isRun ? 0.035 : 0.022);
+      return p;
+    }
+
     function poseJump(phase) {
       const p = emptyPose();
 
@@ -69,3 +511,81 @@
       p.chestX = chestX;
       return p;
     }
+
+    /* ---- breath + blink (procedural overlay on top of any pose) ---------- */
+    const blink = { nextAt: 1.5 + Math.random() * 3, startAt: -1, duration: 0.14 };
+    function breathe(t, dt) {
+      const br = Math.sin(t * 1.6) * 0.5 + 0.5;
+      b.chest.scale.y = 1 + br * 0.025;
+      b.chest.rotation.x += br * 0.018;
+      b.neck.rotation.x  += br * 0.010;
+      b.body.position.y  += br * 0.0027;
+
+      // k is eyelid OPENNESS: 1 = open, 0.08 = nearly shut. The lid slides, the eye never scales —
+      // see the comment at the eye construction for why scaling the group broke the iris.
+      let k = 1;
+      if (blink.startAt < 0) {
+        if (t >= blink.nextAt) blink.startAt = t;
+      } else {
+        const q = (t - blink.startAt) / blink.duration;
+        if (q >= 1) {
+          blink.startAt = -1;
+          blink.nextAt = t + 1.8 + Math.random() * 3.2;
+        } else {
+          const closed = q < 0.5 ? q * 2 : (1 - q) * 2;
+          k = 1 - closed * 0.92;
+        }
+      }
+      const lidY = LID_OPEN_Y * k;
+      b.eyeL.userData.lid.position.y = lidY;
+      b.eyeR.userData.lid.position.y = lidY;
+    }
+
+    /* ---- speed-driven update (gta's entry point) ------------------------- */
+    let tAcc = 0, lastCfg = null;
+    function update(dt, st) {
+      const d = Math.min(dt, 0.05);
+      const speed = (st && st.speed) || 0;
+      const sprint = !!(st && st.sprint);
+      tAcc += d;
+
+      let pose;
+      if (speed < 0.3) {
+        pose = poseIdle(tAcc);
+        lastCfg = null;
+      } else {
+        // Walk at any speed under sprint; run once sprinting. Amplitudes come from the config, so
+        // one variant covers the whole band. RENORMALISE tAcc across a config swap so the phase
+        // tAcc*freq stays continuous — a raw swap snaps the legs mid-stride.
+        const cfg = sprint ? RUNS[1] : WALKS[0];
+        if (cfg !== lastCfg) {
+          if (lastCfg) tAcc = tAcc * lastCfg.freq / cfg.freq;
+          lastCfg = cfg;
+        }
+        pose = poseGait(tAcc, cfg, sprint);
+      }
+      applyPose(pose);
+      breathe(tAcc, d);
+      return pose;
+    }
+
+    return {
+      group: wrapper,
+      update: update,
+      applyPose: applyPose,
+      emptyPose: emptyPose,
+      lerpPose: lerpPose,
+      poseIdle: poseIdle,
+      poseGait: poseGait,
+      poseJump: poseJump,
+      breathe: breathe,
+      WALKS: WALKS,
+      RUNS: RUNS,
+      rig: b,
+      P: P,
+      L: L
+    };
+  }
+
+  window.MainPerson = { createHero: createHero };
+})();
