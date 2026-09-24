@@ -21,6 +21,12 @@
 (function () {
   'use strict';
 
+  // Параметры зебры. Общие для buildCrossings() и buildMarkings() —
+  // разметка должна знать, где кончается дорожка перехода, чтобы не
+  // рисовать штрихи поверх полос.
+  const CROSS_DEPTH = 4.0;   // глубина дорожки перехода вдоль дороги, м
+  const CROSS_GAP = 1.2;     // отступ дорожки от края перекрёстка, м
+
   /* ---------- background: одна плоскость с UV-shrunk ---------- */
   function buildBackground(THREE, scene, groundTex, worldSize, apron) {
     // Апрон вокруг WORLD: крайние дороги «уходят» за карту как языки асфальта.
@@ -102,16 +108,29 @@
 
   /* ---------- markings: dashes + edges ---------- */
   function buildMarkings(THREE, geom, scene, grid, cell, road, half) {
+    // Полная длина сегмента между осями соседних перекрёстков.
     const segLen = cell - road;
-    const dashGeo = new THREE.BoxGeometry(0.15, 0.012, 3).translate(0, 0.006, 0);
-    const edgeGeo = new THREE.BoxGeometry(0.15, 0.012, segLen).translate(0, 0.006, 0);
+    // Но рисовать можно только МЕЖДУ зебрами: зебра сидит на расстоянии
+    // (BOX + CROSS_GAP + CROSS_DEPTH) от центра перекрёстка, значит от
+    // центра сегмента до ближнего края полосы зебры — столько же.
+    const BOX = road / 2;
+    const paintHalf = Math.max(0, cell / 2 - BOX - CROSS_GAP - CROSS_DEPTH);
+    const paintLen  = paintHalf * 2;
+
+    const DASH_LEN = 3;
+    const DASH_STEP = 7;                              // штрих 3 м + промежуток 4 м
+    // Сколько штрихов влезает в зону рисования, распределяем симметрично
+    // относительно центра сегмента.
+    const nDash = Math.max(1, Math.floor((paintLen - DASH_LEN) / DASH_STEP) + 1);
+    const totalDash = (nDash - 1) * DASH_STEP + DASH_LEN;
+    const startOff = -totalDash / 2 + DASH_LEN / 2;
+
+    const dashGeo = new THREE.BoxGeometry(0.15, 0.012, DASH_LEN).translate(0, 0.006, 0);
+    // Краевые линии — той же длины, что и общая зона рисования.
+    const edgeGeo = new THREE.BoxGeometry(0.15, 0.012, paintLen).translate(0, 0.006, 0);
     const mat = new THREE.MeshStandardMaterial({ color: 0xf0e8d0, roughness: .8 });
 
     const dashes = [], edges = [];
-    const step = 7;                                   // штрих 3 м + промежуток 4 м
-    const nDash = Math.floor((segLen - 3) / step) + 1;
-    const totalDash = (nDash - 1) * step + 3;
-    const startOff = -totalDash / 2 + 1.5;
 
     for (let axis = 0; axis < 2; axis++) {
       for (let k = 1; k <= grid - 1; k++) {
@@ -120,7 +139,7 @@
           const segCenter = -half + i * cell + cell / 2;
           // осевые штрихи
           for (let d = 0; d < nDash; d++) {
-            const off = startOff + d * step;
+            const off = startOff + d * DASH_STEP;
             let x, z, yaw;
             if (axis === 0) { x = lineCoord; z = segCenter + off; yaw = 0; }
             else            { x = segCenter + off; z = lineCoord; yaw = Math.PI / 2; }
@@ -174,8 +193,7 @@
     const BOX = road / 2;
     const stripeW = 0.5;
     const gap = 0.5;
-    const CROSS_DEPTH = 4.0;          // ширина пешеходной дорожки вдоль дороги
-    const gapFromBox = 1.2;            // отступ дорожки от края перекрёстка
+    const gapFromBox = CROSS_GAP;     // локальный псевдоним: в формулах ниже читается лучше
 
     // Полоса: узкая по X (0.5), длинная по Z (CROSS_DEPTH).
     // При yaw=0 — готова для перехода через вертикальную дорогу;

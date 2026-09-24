@@ -117,8 +117,8 @@
   </div>
 
   <div id="traffic" class="panel">
-    <div class="trow"><span class="lbl">Traffic speed</span><span id="tmul">×1.00</span></div>
-    <input id="tslider" type="range" min="0" max="250" step="5" value="100" aria-label="Traffic speed multiplier">
+    <div class="trow"><span class="lbl">Traffic density</span><span id="tmul">52 / 130</span></div>
+    <input id="tslider" type="range" min="0" max="250" step="5" value="100" aria-label="Traffic density">
     <div class="thint"><kbd>-</kbd><kbd>=</kbd><span class="lbl">step</span><kbd>0</kbd><span class="lbl">reset</span></div>
   </div>
 
@@ -320,6 +320,12 @@ const glassMat=new THREE.MeshStandardMaterial({color:0xffffff,map:null,emissive:
 /* ---------- city data ---------- */
 const buildings=[],trees=[],cars=[],peds=[];
 let streetlights=[],lampMesh=null,lampLightPool=[],lampGroup;
+// curNight хранит текущую ночь (0 — день, 1 — ночь), чтобы пул фар не
+// пересчитывал её отдельно от updateCycle. headlightPool — шесть SpotLight,
+// которые каждый кадр садятся на ближайшие к камере машины.
+let curNight=0;
+let headlightPool=[];
+
 
 function isRoad(x,z){return Math.abs(((x+HALF)%CELL))<ROAD/2||Math.abs(((z+HALF)%CELL))<ROAD/2;}
 
@@ -397,7 +403,11 @@ function buildStreetlights(){
   });
 
   // pooled point lights (6) that follow the nearest streetlights at night
-  for(let i=0;i<6;i++){const l=new THREE.PointLight(0xffb45a,0,26,2);l.visible=false;scene.add(l);lampLightPool.push(l);}
+  // Пул фонарей всегда visible=true, «выключено» — это intensity=0.
+  // Смена visible меняет NUM_POINT_LIGHTS в шейдере и заставляет
+  // Three.js пересобирать программы всех материалов — это давало фризы
+  // на закате, когда лампа впервые загоралась.
+  for(let i=0;i<6;i++){const l=new THREE.PointLight(0xffb45a,0,26,2);l.visible=true;scene.add(l);lampLightPool.push(l);}
 }
 
 /* ---------- cars ---------- */
@@ -419,6 +429,10 @@ const tailMat=new THREE.MeshStandardMaterial({color:0x2a0908,roughness:.4 ,metal
 const brakeMat=new THREE.MeshStandardMaterial({color:0x3a0605,roughness:.4,metalness:.2,emissive:0xff2f1c,emissiveIntensity:0});
 let wheelMesh=null,headMesh=null,tailMesh=null,brakeMesh=null;
 const lanes=new Map();                       // lane key -> cars driving in it (used for the gap search)
+// Пул трафика: CAR_COUNT_BASE активны при множителе 1.0, CAR_COUNT_MAX —
+// физический потолок, до которого добирается множитель 2.5. Разница сидит
+// в сцене спрятанной под землю и не тратит время ни на физику, ни на рендер.
+const CAR_COUNT_BASE=52,CAR_COUNT_MAX=130;
 const laneKey=c=>c.axis+':'+c.lineIdx+':'+c.dir;
 
 // Shortest distance between two spawn slots on a lane that wraps around the map.
@@ -437,7 +451,7 @@ function clearOfBox(along,hl){
 }
 
 function buildCars(){
-  const N=52;
+  const N=CAR_COUNT_MAX;
   // ---- pass 1: fleet mix + lanes. A long vehicle needs a much longer free slot at spawn, and two bodies
   // started inside each other drive straight through one another (gapAhead() reads an overlap as "clear
   // lane ahead", because the periodic gap to that car is nearly a full lap).
@@ -489,16 +503,19 @@ function buildCars(){
     const dr=DRIVE[t.kind],ll=V.lightLayout(t),cruise=rand(dr.cruise[0],dr.cruise[1]);
     // id is fixed at build time and never reused: it is the last tie-break of a crossing, the one that
     // lets four cars arriving together elect a single leader without two drivers disagreeing twice.
-    const c={id:cars.length,x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
+    const id=cars.length;
+    const c={id,x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
       kind:t.kind,type:t,mesh,wr:t.wr,lensScale:ll.s,
       hw:t.W/2+.1,hl:t.L/2+.1,dmin:t.L+(t.kind==='car'?3.5:6),brakeRange:t.L+(t.kind==='car'?24:30),
       cruise,speed:cruise*.85,acc:dr.acc,dec:dr.dec,spin:0,braking:false,yielding:false,
       // Junction state, rewritten every frame by arbitrateCrossings(): lead = the car we follow, xs = the
       // square we are engaged with, xGo = its verdict. stall/unstick/revDist are timers — patience at a
       // held line, seconds wedged inside a box, metres already given way while reversing out.
+      active:id<activeCars,
       lead:null,xs:null,xGo:true,stall:0,unstick:0,reverse:0,revDist:0,
       wheels:V.vehicleWheels(t),heads:ll.heads,tails:ll.tails};
     cars.push(c);
+    if(!c.active)mesh.position.y=-1000;   // спрятан под землю до активации
     const g=lanes.get(laneKey(c))||lanes.set(laneKey(c),[]).get(laneKey(c));g.push(c);
   }
 }
@@ -609,9 +626,16 @@ function updateCycle(dt){
 
   stars.material.opacity=smoothstep(0.05,-0.1,elev)*0.9;
   glassMat.emissiveIntensity=night*1.7;
+  // Фары и задние габариты. headMat зажигается только ночью, tailMat чуть
+  // теплится и днём — как габаритный огонь. Стоп-сигналы отдельно, через
+  // brakeMesh в writeCarInstances().
+  headMat.emissiveIntensity=night*3.0;
+  tailMat.emissiveIntensity=0.12+night*1.2;
+  curNight=night;
 
-  const lampOn=night>0.35;
-  for(const l of lampLightPool){l.visible=lampOn;l.intensity=lerp(0,2.4,night);}
+
+  // Только интенсивность. Визибилити у пула фонарей не трогаем (см. выше).
+  for(const l of lampLightPool){l.intensity=lerp(0,2.4,night);}
 
   const hh=Math.floor(dayTime*24),mm=Math.floor((dayTime*24%1)*60);
   document.getElementById('time').textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
@@ -632,17 +656,32 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>keys[e.code]=false);
 
 /* ---------- traffic speed multiplier (HUD) ---------- */
-// Scales the *traffic clock* only. Cruise speeds, brake rates, lane gaps and every right-of-way decision
-// keep their calibrated values, so ×0.5 is a slow-motion view of the same simulation rather than a world
-// of slippery cars; ×0 parks the whole fleet in place and ×2.5 fast-forwards a junction. The crowd keeps
-// real time on purpose — walkers are what you read the scale against.
+// Множитель ПЛОТНОСТИ трафика, а не скорости. 0 — пустые улицы, 1.0 — базовые
+// CAR_COUNT_BASE машин, 2.5 — CAR_COUNT_MAX. Профили движения (cruise, acc,
+// dec) и правила приоритета не масштабируются: время течёт реально, меняется
+// только число активных машин. Толпа живёт по общему времени — по ней удобно
+// читать масштаб.
 let trafficMult=1;
+let activeCars=0;
 const tmulEl=document.getElementById('tmul'),tsliderEl=document.getElementById('tslider');
 function setTrafficMult(m){
   trafficMult=clamp(Math.round(m*20)/20,0,2.5);          // snap to 0.05 steps: slider and keys agree
-  if(tmulEl)tmulEl.textContent='×'+trafficMult.toFixed(2);
+  // Множитель 1.0 = CAR_COUNT_BASE. Больше 1.0 добирает резерв до CAR_COUNT_MAX.
+  activeCars=clamp(Math.round(CAR_COUNT_BASE*trafficMult),0,CAR_COUNT_MAX);
+  if(cars.length){
+    for(const c of cars){
+      const on=c.id<activeCars;
+      if(c.active!==on){
+        c.active=on;
+        // Спрятать/показать тело. Инстансы колёс и фар перестают рисоваться
+        // через нулевой scale в writeCarInstances.
+        c.mesh.position.y=on?0:-1000;
+      }
+    }
+  }
+  if(tmulEl)tmulEl.textContent=activeCars+' / '+CAR_COUNT_MAX;
   if(tsliderEl){tsliderEl.value=Math.round(trafficMult*100);
-                tsliderEl.style.setProperty('--fill',(trafficMult/2.5*100).toFixed(1)+'%');}
+                tsliderEl.style.setProperty('--fill',(activeCars/CAR_COUNT_MAX*100).toFixed(1)+'%');}
 }
 if(tsliderEl){
   tsliderEl.addEventListener('input',()=>setTrafficMult(+tsliderEl.value/100));
@@ -668,6 +707,7 @@ function collide(px,pz,r){
 function resolveCars(px,pz,r,out){
   out.x=0;out.z=0;out.vx=0;out.vz=0;let best=0;
   for(const c of cars){
+    if(!c.active)continue;
     const dx=px-c.x,dz=pz-c.z;if(dx*dx+dz*dz>64)continue;   // cheap reject: nothing closer than 8 m
     const co=Math.cos(c.yaw),si=Math.sin(c.yaw);
     const lx=dx*co-dz*si,lz=dx*si+dz*co;                    // world -> car frame (yaw is a Y rotation)
@@ -821,7 +861,7 @@ const fromRight=(c,o)=>o.dir===(c.axis===0?-c.dir:c.dir);
 // Nearest vehicle in our own lane (periodic across the map edge), as {car, distance centre-to-centre}.
 function leaderAhead(c){
   const g=lanes.get(laneKey(c));let best=null,bd=Infinity;
-  if(g)for(const o of g){if(o===c)continue;let d=(o.s-c.s)*c.dir;if(d<=0)d+=TRACK;if(d<bd){bd=d;best=o;}}
+  if(g)for(const o of g){if(o===c||!o.active)continue;let d=(o.s-c.s)*c.dir;if(d<=0)d+=TRACK;if(d<bd){bd=d;best=o;}}
   return best?{car:best,d:bd}:null;
 }
 // Bumper-to-obstacle distance when (ox,oz) stands in this car's path, Infinity when the lane is clear.
@@ -844,6 +884,7 @@ function pathGap(c,ox,oz,pad){
 function bodyGap(c,perpOnly){
   let best=Infinity;
   for(const o of cars){
+    if(!o.active)continue;
     if(o===c||(perpOnly&&o.axis===c.axis))continue;
     const dF=c.axis===0?(o.z-c.z)*c.dir:(o.x-c.x)*c.dir;      // centre-to-centre along our heading
     if(dF>70)continue;
@@ -860,6 +901,7 @@ function bodyGap(c,perpOnly){
 function bodyGapBehind(c){
   let best=Infinity;
   for(const o of cars){
+    if(!o.active)continue;
     if(o===c||o.axis!==c.axis)continue;
     const dF=c.axis===0?(o.z-c.z)*c.dir:(o.x-c.x)*c.dir;
     if(dF>=0||dF<-45)continue;
@@ -933,6 +975,7 @@ function roomToClear(c){
 function arbitrateCrossings(){
   const crossings=new Map();
   for(const c of cars){
+    if(!c.active)continue;
     c.xs=null;c.xGo=true;
     if(c.reverse)continue;                               // backing out: the decision is already made
     const xs=crossState(c);if(!xs)continue;
@@ -981,6 +1024,7 @@ function arbitrateCrossings(){
 // the square with a body across its lane gives way the hard way and hands the crossing over.
 function unstickCars(dt){
   for(const c of cars){
+    if(!c.active)continue;
     if(c.reverse){                                       // owns this car's throttle while it backs out
       const gap=bodyGapBehind(c);
       const lim=gap-.6<=0?0:Math.min(REVERSE_V,Math.sqrt(2*c.dec*(gap-.6)));
@@ -1006,12 +1050,14 @@ function updateCars(dt){
   // Pass order matters: the crossing verdict needs this frame's lane gap, and nothing may move before the
   // verdicts are in, so a car never drives on last frame's decision.
   for(const c of cars){
+    if(!c.active)continue;                               // неактивные не занимают лейн и таймеры
     c.lead=leaderAhead(c);
     if(c.speed<.5)c.stall+=dt;else c.stall=0;            // patience timer for the liveness escapes
   }
   arbitrateCrossings();
   unstickCars(dt);
   for(const c of cars){
+    if(!c.active)continue;
     if(c.reverse)continue;                               // unstickCars drives this one backwards
     let target=c.cruise;
     // 1) car-following in our own lane
@@ -1048,6 +1094,19 @@ const _m4d=new THREE.Matrix4(),_ql=new THREE.Quaternion();
 function writeCarInstances(){
   let wi=0,li=0;
   for(const c of cars){
+    if(!c.active){
+      // Нулевой скейл — инстанс уходит в точку и не рисуется. Индексы всё
+      // равно растут: буфер должен быть перезаписан целиком, иначе на
+      // освободившихся слотах останутся матрицы от прошлого кадра.
+      _m4d.makeScale(0,0,0);
+      for(let k=0;k<c.wheels.length;k++)wheelMesh.setMatrixAt(wi++,_m4d);
+      for(let k=0;k<c.heads.length;k++){
+        headMesh .setMatrixAt(li,_m4d);
+        tailMesh .setMatrixAt(li,_m4d);
+        brakeMesh.setMatrixAt(li++,_m4d);
+      }
+      continue;
+    }
     _qy.setFromAxisAngle(_Y,c.yaw);_m4a.compose(c.mesh.position,_qy,_ONE);
     for(let k=0;k<c.wheels.length;k++){const w=c.wheels[k];      // [x, z, radius, widthScale]
       _m4b.makeTranslation(w[0],w[2],w[1]).multiply(_m4c.makeRotationX(c.spin))
@@ -1098,7 +1157,7 @@ function updatePeds(dt,t){
 
 /* ---------- streetlight pooling (nearest to camera) ---------- */
 function updateLights(){
-  if(!lampLightPool[0].visible)return;
+  if(lampLightPool[0].intensity<0.01)return;   // день — не тратим сортировку
   const arr=streetlights.map(s=>({s,d:(s.x-player.x)**2+(s.z-player.z)**2})).sort((a,b)=>a.d-b.d);
   for(let i=0;i<lampLightPool.length;i++){const l=lampLightPool[i];if(arr[i]){l.position.set(arr[i].s.x,6.7,arr[i].s.z);}else{l.visible=false;}}
 }
@@ -1124,10 +1183,99 @@ function drawMinimap(){
   mmCtx.fillStyle='#5fd0ff';mmCtx.beginPath();mmCtx.moveTo(0,-7);mmCtx.lineTo(4.5,6);mmCtx.lineTo(0,3);mmCtx.lineTo(-4.5,6);mmCtx.closePath();mmCtx.fill();mmCtx.restore();
 }
 
+/* ---------- car headlights: 6-SpotLight pool ------------------------------
+   Механизм тот же, что у фонарей (lampLightPool): раз в кадр выбираются
+   ближайшие к камере кандидаты и раздаются пулу. Отличие в фильтре: берём
+   только машины, едущие НА камеру (dot(forward, toCamera) > 0.2). Фары
+   машины, уезжающей в противоположную сторону, всё равно не попадают в
+   кадр — они впустую заняли бы слот. Пул не отбрасывает тени: в этой сцене
+   shadow map для SpotLight-а стоит слишком дорого, а сами тени от фар почти
+   не читаются.
+
+   Позиция света — на первой фаре (c.heads[0]); цель — точка в 20 м впереди
+   машины по её собственному forward, чуть выше асфальта. Угол и penumbra
+   подобраны так, чтобы пятно на дороге было узким, но с мягкой кромкой. */
+const HEADLIGHT_POOL_SIZE=12;   // 6 машин × 2 фары
+// Машина ближе этого расстояния к герою остаётся в пуле независимо от
+// направления камеры — иначе при взгляде сбоку от машины на героя его
+// силуэт не подсвечен, потому что по «едет на камеру» такая машина мимо.
+const HEADLIGHT_NEAR_PLAYER=18;   // м, по горизонтали
+function buildHeadlightPool(){
+  for(let i=0;i<HEADLIGHT_POOL_SIZE;i++){
+    // (color, intensity, distance, angle, penumbra, decay)
+    const l=new THREE.SpotLight(0xfff2d0,0,30,0.42,0.6,1.5);
+    // Всегда visible=true, «выключено» — это intensity=0. Иначе каждый
+    // переход через curNight<0.05 заставляет Three.js пересобирать шейдеры
+    // всех материалов сцены — это и был источник фризов.
+    l.visible=true;
+    l.castShadow=false;
+    scene.add(l);
+    scene.add(l.target);
+    headlightPool.push(l);
+  }
+}
+// Один модульный массив кандидатов, переиспользуется каждый кадр: чтобы не
+// аллоцировать 52 объекта на кадр, храним пары {car, d2} и пересоздаём
+// только длину через .length=0.
+const _hlCand=[];
+function updateHeadlights(){
+  if(!headlightPool.length) return;
+  if(curNight<0.05){
+    for(const l of headlightPool){l.intensity=0;}
+    return;
+  }
+  const camx=camera.position.x,camz=camera.position.z;
+  const px=player.x,pz=player.z;
+  const near2=HEADLIGHT_NEAR_PLAYER*HEADLIGHT_NEAR_PLAYER;
+  _hlCand.length=0;
+  for(const c of cars){
+    if(!c.active)continue;
+    const dx=camx-c.x,dz=camz-c.z;
+    const d2=dx*dx+dz*dz;
+    if(d2>80*80)continue;                       // дальше 80 м неинтересно
+    const dxP=px-c.x,dzP=pz-c.z;
+    const near=d2===undefined?false:(dxP*dxP+dzP*dzP)<near2;
+    if(!near){
+      const fx=Math.sin(c.yaw),fz=Math.cos(c.yaw);
+      const len=Math.sqrt(d2)||1;
+      if((fx*dx+fz*dz)/len<0.2)continue;         // едет от камеры и не рядом с героем → мимо
+    }
+    _hlCand.push({c,d2,near});
+  }
+  // Сначала близкие к герою (они освещают его), потом — по дистанции к камере.
+  _hlCand.sort((a,b)=>{
+    if(a.near!==b.near)return a.near?-1:1;
+    return a.d2-b.d2;
+  });
+  // Два света на машину: чётный индекс — левая фара, нечётный — правая.
+  // Интенсивность вдвое ниже (0.9 вместо 1.6): два перекрывающихся конуса
+  // дают на дороге примерно то же, что давал один на 1.6, но пятно теперь
+  // имеет правильную форму — две лужицы, а не одна смещённая к борту.
+  const intensity=curNight*0.9;
+  for(let i=0;i<headlightPool.length;i++){
+    const l=headlightPool[i];
+    const carIdx=(i/2)|0;
+    const headIdx=i&1;
+    if(carIdx>=_hlCand.length){l.intensity=0;continue;}
+    const c=_hlCand[carIdx].c;
+    const H=c.heads[headIdx];                    // [x,y,z] в локальных осях машины
+    const cy=Math.cos(c.yaw),sy=Math.sin(c.yaw);
+    // Поворот локального смещения вокруг Y: x' = x*cos + z*sin, z' = -x*sin + z*cos
+    const wx=H[0]*cy+H[2]*sy;
+    const wz=-H[0]*sy+H[2]*cy;
+    l.position.set(c.x+wx,H[1],c.z+wz);
+    const fx=Math.sin(c.yaw),fz=Math.cos(c.yaw);
+    l.target.position.set(c.x+fx*20,0.5,c.z+fz*20);
+    l.target.updateMatrixWorld();
+    l.visible=true;
+    l.intensity=intensity;
+  }
+}
+
 /* ---------- loop ---------- */
 let last=performance.now(),started=false,frame=0;
 function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,0.05);last=now;const t=now/1000;
-  updateCycle(dt);updatePlayer(dt,t);updateCars(dt*trafficMult);updatePeds(dt,t);
+  updateCycle(dt);updatePlayer(dt,t);updateCars(dt);updatePeds(dt,t);updateHeadlights();
   if((frame++&3)===0){updateLights();drawMinimap();}   // nearest-lamp sort + minimap redraw: ~15Hz is plenty
   renderer.render(scene,camera);}
 
@@ -1144,8 +1292,13 @@ async function boot(){
   buildCity();await step(60,'Placing '+buildings.length+' buildings…');
   buildTrees();await step(72,'Planting '+trees.length+' trees…');
   buildStreetlights();await step(82,'Wiring streetlights…');
-  buildCars();buildPeds();buildCharacter();await step(94,'Spawning traffic & crowds…');
-  initMinimap();updateCycle(0);await step(100,'Ready.');
+  buildCars();buildHeadlightPool();buildPeds();buildCharacter();await step(94,'Spawning traffic & crowds…');
+  initMinimap();updateCycle(0);
+  // Прогрев шейдеров: собрать все программы с максимальным числом источников
+  // (6 point + 12 spot). Без этого первая ночь компилирует их лениво — по
+  // программе на материал за кадр, что и читалось как фриз.
+  renderer.compile(scene,camera);
+  await step(100,'Ready.');
   started=true;
   loaderEl.classList.add('hidden');   // the intro screen sits *under* the opaque loader — reveal it
   animate(performance.now());
@@ -1200,7 +1353,7 @@ boot().catch(err=>{
 // list is a migration convenience, not a design.
 Object.assign(window, {
   // Data — the harness mutates through the same references
-  cars, buildings, trees, lampLightPool, player,
+  cars, buildings, trees, lampLightPool, headlightPool, player,
   // Asset factory instances (see the guard at the top of the module) + their namespaces
   V, PED, MeridianVehicles, MeridianPedestrians,
   // Helpers the right-of-way audit calls directly
