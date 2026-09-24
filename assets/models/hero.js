@@ -592,20 +592,83 @@
 /* --------------------------------------------------------------------------
  * Регистрация для viewer.html. Сам риг уже выставлен на window.MainPerson,
  * так что сюда не нужно ничего из внутреннего scope.
+ *
+ * Анимации для селектора в viewer.html: preview возвращает объект с
+ *   userData.animations = [{id,label},…]
+ *   userData.setAnimation(id)
+ *   userData.tick(t, dt)
+ * Список id: idle, walk:0..WALKS-1, run:0..RUNS-1, jump.
  * ------------------------------------------------------------------------ */
 (function () {
   'use strict';
   if (!window.MeridianAssets) return;
+
   MeridianAssets.register({
     id: 'character/hero',
     label: 'Hero — procedural rig',
     group: 'Characters',
-    notes: 'WALKS/RUNS из main_person.js; viewer гоняет hero.update(dt) в idle.',
+    notes: 'Позы — из main_person.js; переключайте в списке анимаций.',
     makePreview: function (ctx) {
-      const hero = MainPerson.createHero({ THREE: ctx.THREE, RoundedBoxGeometry: ctx.RoundedBoxGeometry });
-      const wrap = new ctx.THREE.Group();
+      const THREE = ctx.THREE;
+      const hero = MainPerson.createHero({ THREE: THREE, RoundedBoxGeometry: ctx.RoundedBoxGeometry });
+      const wrap = new THREE.Group();
       wrap.add(hero.group);
-      wrap.userData.tick = function (t, dt) { hero.update(dt, { speed: 0, sprint: false }); };
+
+      // Список анимаций собираем из самого рига, без дублирования имён.
+      const animList = [{ id: 'idle', label: 'Idle' }];
+      hero.WALKS.forEach(function (w, i) { animList.push({ id: 'walk:' + i, label: 'Walk · ' + w.name }); });
+      hero.RUNS .forEach(function (r, i) { animList.push({ id: 'run:'  + i, label: 'Run · '  + r.name }); });
+      animList.push({ id: 'jump', label: 'Jump' });
+      wrap.userData.animations = animList;
+
+      // Локальный стейт-машина. baseState держит позу под прыжком;
+      // смена базы обрывает прыжок, а не наоборот.
+      const JUMP_DUR = 1.5;
+      const BLEND_IN = 0.18;
+      const BLEND_OUT = 0.20;
+      let baseState = 'idle', baseVariant = 0;
+      let jumping = false, jumpT = 0;
+      let baseT = 0;
+
+      function smoothstep(a, b, x) {
+        const k = Math.max(0, Math.min(1, (x - a) / (b - a)));
+        return k * k * (3 - 2 * k);
+      }
+      function poseFor(name, idx, t) {
+        if (name === 'idle') return hero.poseIdle(t);
+        if (name === 'walk') return hero.poseGait(t, hero.WALKS[idx], false);
+        if (name === 'run')  return hero.poseGait(t, hero.RUNS[idx],  true);
+        return hero.emptyPose();
+      }
+
+      wrap.userData.setAnimation = function (id) {
+        const parts = String(id).split(':');
+        const kind = parts[0], n = parts[1];
+        if (kind === 'jump') { jumping = true; jumpT = 0; return; }
+        baseState   = kind;
+        baseVariant = n ? (+n | 0) : 0;
+        jumping = false;         // смена базы прерывает прыжок
+      };
+
+      wrap.userData.tick = function (t, dt) {
+        baseT += dt;
+        let pose;
+        if (jumping) {
+          jumpT += dt;
+          const phase = Math.min(1, jumpT / JUMP_DUR);
+          const basePose = poseFor(baseState, baseVariant, baseT);
+          const jumpPose = hero.poseJump(phase);
+          const wIn  = smoothstep(0, BLEND_IN, jumpT);
+          const wOut = smoothstep(0, BLEND_OUT, JUMP_DUR - jumpT);
+          pose = hero.lerpPose(basePose, jumpPose, Math.min(wIn, wOut));
+          if (phase >= 1) { jumping = false; jumpT = 0; }
+        } else {
+          pose = poseFor(baseState, baseVariant, baseT);
+        }
+        hero.applyPose(pose);
+        hero.breathe(baseT, dt);   // дыхание + моргание поверх любой позы
+      };
+
       return wrap;
     },
   });

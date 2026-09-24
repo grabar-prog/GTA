@@ -2,6 +2,9 @@
  *
  * trGap — зазор бампер→передняя часть прицепа; длина прицепа = L - trGap.
  * Цвет шторы (curt) и краска кабины (paint) приходят снаружи.
+ *
+ * Палитра кита: curtain — цвет шторы, marker — угловые габариты.
+ *   MeridianSemiKit.PALETTE.curtain = [0x111111, 0x222222];
  */
 (function () {
   'use strict';
@@ -11,6 +14,20 @@
       trFloor: 1.42, trTop: 4.00, track: 2.05,
       axles: [[ 6.4, .55, 1], [ 2.5, .55, 1.75], [-5.8, .52, 1.75], [-6.9, .52, 1.75]] }
   ];
+
+  const PALETTE = {
+    curtain: [0xd8dde3, 0xe8e8ea, 0x2f5f96, 0xb03a34, 0x3c7d54, 0x8f9aa6],
+    trim:    0x15181d,
+    glass:   0x10171f,
+    dark:    0x23282f,
+    chrome:  0xa9b3bd,
+    busRoof: 0x9aa3bd,
+    busRib:  0xb4bcc6,
+    marker:  0xd9a94a,
+  };
+
+  // Фура — самая тяжёлая в парке.
+  const DRIVE = { cruise: [6, 9], acc: 2.1, dec: 7 };
 
   function makeGeometry(G, t, paint, curt, PAL) {
     const { mergeGeometries, boxAt, taperBox, cylZ, THREE } = G;
@@ -30,8 +47,8 @@
     P.push(cylZ(.3, 1.2,  .78, .92, 4.3, 14, PAL.chrome));
     P.push(cylZ(.3, 1.2, -.78, .92, 4.3, 14, PAL.chrome));
     P.push(boxAt(1.9, .12, 2.0, 0, 1.16, trZ1 - 1.6, PAL.dark));
-    // Exhaust stack — единственное место, где нужен сам THREE (голый CylinderGeometry
-    // с разными радиусами; cylY из geom.js даёт только равные).
+    // Exhaust stack — единственное место, где нужен сам THREE (голый
+    // CylinderGeometry с разными радиусами; cylY из geom.js даёт только равные).
     P.push({ geo: new THREE.CylinderGeometry(.09, .11, 1.7, 10)
                      .translate(W / 2 - .25, 2.05, cabR - .3), color: PAL.chrome });
     for (const sx of [1, -1]) for (const dz of [-.62, .62])
@@ -56,18 +73,33 @@
     return mergeGeometries(P);
   }
 
+  // Фары на передке тягача, задний кластер — высоко на дверях прицепа,
+  // а не на тракторе (иначе светил бы внутрь шторы).
+  function lightLayout(t) {
+    return { s: 1.15,
+      heads: [[ t.W / 2 - .4, 1.05,  t.L / 2 + .02], [-t.W / 2 + .4, 1.05,  t.L / 2 + .02]],
+      tails: [[ t.trailerW / 2 - .3, 1.6, -t.L / 2 - .08], [-t.trailerW / 2 + .3, 1.6, -t.L / 2 - .08]] };
+  }
+
+  function vehicleWheels(t) {
+    const half = t.track / 2, out = [];
+    for (const [z, r, w] of t.axles) { out.push([ half, z, r, w]); out.push([-half, z, r, w]); }
+    return out;
+  }
+
   function makePreview(ctx) {
     const { THREE, geom } = ctx;
-    const PAL = { trim: 0x15181d, glass: 0x10171f, dark: 0x23282f, chrome: 0xa9b3bd,
-                  busRoof: 0x9aa3bd, busRib: 0xb4bcc6, marker: 0xd9a94a };
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .34, metalness: .55 });
-    const m = new THREE.Mesh(makeGeometry(geom, TRUCK_TYPES[0], 0xd23b3b, 0xd8dde3, PAL), mat);
+    const m = new THREE.Mesh(makeGeometry(geom, TRUCK_TYPES[0], 0xd23b3b, PALETTE.curtain[0], PALETTE), mat);
     m.castShadow = true; m.receiveShadow = true;
     const group = new THREE.Group(); group.add(m);
     return group;
   }
 
-  window.MeridianSemiKit = { TRUCK_TYPES, makeGeometry };
+  window.MeridianSemiKit = {
+    TRUCK_TYPES, PALETTE, DRIVE,
+    makeGeometry, lightLayout, vehicleWheels,
+  };
 
   MeridianAssets.register({
     id: 'vehicle/semi',

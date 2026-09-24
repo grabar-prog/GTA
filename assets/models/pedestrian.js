@@ -115,17 +115,18 @@
 })();
 
 /* --------------------------------------------------------------------------
- * Регистрация для viewer.html. Ставит N пешеходов в ряд, чтобы видеть
- * палитру рубашек/кожи вместе. Всё через window.MeridianPedestrians.
+ * Регистрация для viewer.html. Ставит N пешеходов в ряд.
+ * Анимации: static (rest-pose) и walk (процедурная качалка, как updatePeds).
  * ------------------------------------------------------------------------ */
 (function () {
   'use strict';
   if (!window.MeridianAssets) return;
+
   MeridianAssets.register({
     id: 'character/pedestrian',
     label: 'Pedestrian — instanced rig (×5)',
     group: 'Characters',
-    notes: 'InstancedMesh; один меш на часть тела, шаг — одна Rx-качалка на конечность.',
+    notes: 'InstancedMesh; один меш на часть тела, качание вокруг плеча/бедра.',
     makePreview: function (ctx) {
       const THREE = ctx.THREE, geom = ctx.geom;
       const PED = MeridianPedestrians.createFactory({ THREE: THREE, helpers: geom });
@@ -133,21 +134,68 @@
       const group = new THREE.Group();
       const rig = PED.createRig(group, N);
       const PAL = PED.palettes, R = PED.RIG;
-      const m = new THREE.Matrix4(), q = new THREE.Quaternion();
-      const p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
+
+      // Позиции по X в ряду + фазовые сдвиги, чтобы строй не шагал синхронно.
       const gap = 0.9, x0 = -(N - 1) * gap / 2;
+      const rows = [];
       for (let i = 0; i < N; i++) {
+        rows.push({ x: x0 + i * gap, phase: i * 1.37 });
         rig.setColors(i, PAL.shirt[i % PAL.shirt.length], PAL.skin[i % PAL.skin.length]);
-        const x = x0 + i * gap;
-        rig.torso.setMatrixAt(i, m.compose(p.set(x,               R.hip,      0), q, s));
-        rig.head .setMatrixAt(i, m.compose(p.set(x,               R.head,     0), q, s));
-        rig.armL .setMatrixAt(i, m.compose(p.set(x - R.shX,       R.shoulder, 0), q, s));
-        rig.armR .setMatrixAt(i, m.compose(p.set(x + R.shX,       R.shoulder, 0), q, s));
-        rig.legL .setMatrixAt(i, m.compose(p.set(x - R.hipX,      R.hip,      0), q, s));
-        rig.legR .setMatrixAt(i, m.compose(p.set(x + R.hipX,      R.hip,      0), q, s));
       }
       rig.commitColors();
-      for (const mesh of rig.meshes) mesh.instanceMatrix.needsUpdate = true;
+
+      const _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
+      const _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+      const _X = new THREE.Vector3(1, 0, 0);
+
+      // В превью yaw = 0, поэтому rotation вокруг X; локальный pivot уже в матрице.
+      function writeLimb(mesh, i, x, pivX, pivY, swing, bob) {
+        _q.setFromAxisAngle(_X, swing);
+        mesh.setMatrixAt(i, _m.compose(_p.set(x + pivX, pivY + bob, 0), _q, _s));
+      }
+      function writeStatic() {
+        _q.identity();
+        for (let i = 0; i < N; i++) {
+          const x = rows[i].x;
+          rig.torso.setMatrixAt(i, _m.compose(_p.set(x, R.hip,  0), _q, _s));
+          rig.head .setMatrixAt(i, _m.compose(_p.set(x, R.head, 0), _q, _s));
+          writeLimb(rig.armL, i, x, -R.shX,  R.shoulder,  0, 0);
+          writeLimb(rig.armR, i, x,  R.shX,  R.shoulder,  0, 0);
+          writeLimb(rig.legL, i, x, -R.hipX, R.hip,       0, 0);
+          writeLimb(rig.legR, i, x,  R.hipX, R.hip,       0, 0);
+        }
+        for (const m of rig.meshes) m.instanceMatrix.needsUpdate = true;
+      }
+      function writeWalk(t) {
+        _q.identity();
+        for (let i = 0; i < N; i++) {
+          const x = rows[i].x;
+          const sw  = Math.sin(t * 6 + rows[i].phase) * 0.7;
+          const bob = Math.abs(Math.cos(t * 6 + rows[i].phase)) * 0.03;
+          rig.torso.setMatrixAt(i, _m.compose(_p.set(x, R.hip,  0), _q, _s));
+          rig.head .setMatrixAt(i, _m.compose(_p.set(x, R.head, 0), _q, _s));
+          writeLimb(rig.armL, i, x, -R.shX,  R.shoulder, -sw, bob);
+          writeLimb(rig.armR, i, x,  R.shX,  R.shoulder,  sw, bob);
+          writeLimb(rig.legL, i, x, -R.hipX, R.hip,       sw, bob);
+          writeLimb(rig.legR, i, x,  R.hipX, R.hip,      -sw, bob);
+        }
+        for (const m of rig.meshes) m.instanceMatrix.needsUpdate = true;
+      }
+
+      writeStatic();   // сразу валидная поза, до первого tick
+
+      group.userData.animations = [
+        { id: 'static', label: 'Static' },
+        { id: 'walk',   label: 'Walk (instanced)' },
+      ];
+      group.userData.currentAnimation = 'static';
+      group.userData.setAnimation = function (id) {
+        group.userData.currentAnimation = id;
+        if (id === 'static') writeStatic();
+      };
+      group.userData.tick = function (t /*, dt */) {
+        if (group.userData.currentAnimation === 'walk') writeWalk(t);
+      };
       return group;
     },
   });

@@ -3,6 +3,10 @@
  * doorSide приходит снаружи, а не выпадает монеткой: rng()-draw остаётся в
  * vehicles.js, где ему и положено быть по контракту детерминизма
  * (methodology/contracts/README.md §4).
+ *
+ * Палитра кита: stripe — ливрея (полоса под остеклением), busRoof/busRib/
+ * busDisplay — элементы крыши и табло. Переопределение до createFactory():
+ *   MeridianBusKit.PALETTE.stripe = [0x111111, 0x222222];
  */
 (function () {
   'use strict';
@@ -13,6 +17,20 @@
     { name: 'artbus', kind: 'bus', w: .07, L: 17.5, W: 2.55, wr: .52, floorY: .75, roofY: 3.10, bandH: 1.35, artic: true,
       track: 2.14, axles: [[ 6.6, .52, 1], [-1.4, .52, 1], [-6.6, .52, 1]] }
   ];
+
+  const PALETTE = {
+    stripe:     [0xe8e8ea, 0x2c2f34, 0xf0a526, 0x2f7fd1, 0xd23b3b, 0x4fae7a],
+    trim:       0x15181d,
+    glass:      0x10171f,
+    dark:       0x23282f,
+    chrome:     0xa9b3bd,
+    busRoof:    0x9aa3bd,
+    busRib:     0xb4bcc6,
+    busDisplay: 0x14181d,
+  };
+
+  // Автобус медленнее и осторожнее легковой.
+  const DRIVE = { cruise: [6.5, 10.5], acc: 2.8, dec: 8.5 };
 
   function makeGeometry(G, t, paint, stripe, doorSide, PAL) {
     const { mergeGeometries, boxAt, taperBox, cylZ } = G;
@@ -66,12 +84,21 @@
     return mergeGeometries(P);
   }
 
+  // Фары на углах юбки, задние — на уровне борта, не на крыше.
+  function lightLayout(t) {
+    return { s: 1.3,
+      heads: [[ t.W / 2 - .4, .95,  t.L / 2 + .02], [-t.W / 2 + .4, .95,  t.L / 2 + .02]],
+      tails: [[ t.W / 2 - .4, 1.5, -t.L / 2 - .02], [-t.W / 2 + .4, 1.5, -t.L / 2 - .02]] };
+  }
+
+  function vehicleWheels(t) {
+    const half = t.track / 2, out = [];
+    for (const [z, r, w] of t.axles) { out.push([ half, z, r, w]); out.push([-half, z, r, w]); }
+    return out;
+  }
+
   function makePreview(ctx) {
     const { THREE, geom } = ctx;
-    const PAL = { trim: 0x15181d, glass: 0x10171f, dark: 0x23282f, chrome: 0xa9b3bd,
-                  busRoof: 0x9aa3bd, busRib: 0xb4bcc6, busDisplay: 0x14181d };
-    const LIVERY = [0xe8e8ea, 0xf0a526];
-    const PAINT  = [0x2f7fd1, 0x3fae6a];
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .34, metalness: .55 });
     const group = new THREE.Group();
     const gap = 2.0;
@@ -79,7 +106,12 @@
     let x = -total / 2;
     for (let i = 0; i < BUS_TYPES.length; i++) {
       const t = BUS_TYPES[i];
-      const m = new THREE.Mesh(makeGeometry(geom, t, PAINT[i], LIVERY[i], 1, PAL), mat);
+      const paint  = PALETTE.car ? PALETTE.car[i % PALETTE.car.length] : 0x2f7fd1;
+      const stripe = PALETTE.stripe[i % PALETTE.stripe.length];
+      // В превью ливрея/краска берутся напрямую: там нужен контролируемый
+      // второй цвет, а не общая палитра парка из vehicles.js.
+      const paint2 = [0x2f7fd1, 0x3fae6a][i] || paint;
+      const m = new THREE.Mesh(makeGeometry(geom, t, paint2, stripe, 1, PALETTE), mat);
       m.castShadow = true; m.receiveShadow = true;
       m.position.x = x + t.W / 2;
       x += t.W + gap;
@@ -88,7 +120,10 @@
     return group;
   }
 
-  window.MeridianBusKit = { BUS_TYPES, makeGeometry };
+  window.MeridianBusKit = {
+    BUS_TYPES, PALETTE, DRIVE,
+    makeGeometry, lightLayout, vehicleWheels,
+  };
 
   MeridianAssets.register({
     id: 'vehicle/bus',

@@ -1,42 +1,78 @@
-/* assets/vehicles.js — фабрика транспорта, собранная из трёх body-китов.
+/* assets/vehicles.js — сборщик парка.
  *
- * Геометрия кузовов живёт в assets/models/{car,bus,semi}.js. Здесь — только
- * то, что разделяет весь парк: палитры, состав, колесо, разметка фар и
- * профили движения. Публичная форма MeridianVehicles.createFactory не меняется.
+ * Здесь НЕ живут модели. Каждая модель — свой файл в assets/models/:
+ *   • car.js   — легковые, палитра CAR_PALETTE, DRIVE, lightLayout, vehicleWheels
+ *   • bus.js   — автобусы,   палитра BUS_PALETTE, DRIVE, lightLayout, vehicleWheels
+ *   • semi.js  — фуры,       палитра SEMI_PALETTE, DRIVE, lightLayout, vehicleWheels
+ *
+ * Этот файл знает только то, что разделяет весь парк:
+ *   • как составить список типов и их веса         → VEH_TYPES, VEH_W, pickVehicleType
+ *   • как выглядит ОДНО колесо на всех             → makeWheelGeometry
+ *   • один общий LENS_GEO на head/tail всех тел    → LENS_GEO
+ *   • как скомпоновать PAL из палитр трёх китов    → createFactory
+ *   • куда делегировать lightLayout / vehicleWheels по t.kind
+ *
+ * Палитры переопределяются у китов, а не здесь:
+ *   MeridianCarKit.PALETTE.car = [0x111111, 0x222222];   // до createFactory()
+ *   MeridianBusKit.PALETTE.stripe = [...];
+ *   MeridianSemiKit.PALETTE.curtain = [...];
+ * Обратная совместимость: MeridianVehicles.PALETTES — read-only снимок
+ * дефолтов; писать в него бесполезно.
  *
  * Детерминизм: pickVehicleType(rng) и монетка двери автобуса внутри
  * makeVehicleGeometry(t, paint, tint, rng) сохраняют свои позиции в rng-потоке
  * (methodology/contracts/README.md §4).
+ *
+ * gta.html читает эту фабрику тем же способом, что и раньше — публичная форма
+ * MeridianVehicles.createFactory не менялась.
  */
 (function () {
   'use strict';
 
-  const PALETTES = {
-    car:     [0xd23b3b, 0x2f7fd1, 0xe8e8ea, 0x2c2f34, 0xf0a526, 0x3fae6a, 0xb9c2cc, 0x8a4bd0, 0x1d2733, 0xdfe6ee],
-    stripe:  [0xe8e8ea, 0x2c2f34, 0xf0a526, 0x2f7fd1, 0xd23b3b, 0x4fae7a],
-    curtain: [0xd8dde3, 0xe8e8ea, 0x2f5f96, 0xb03a34, 0x3c7d54, 0x8f9aa6],
-    trim: 0x15181d, glass: 0x10171f, dark: 0x23282f, chrome: 0xa9b3bd,
-    tyre: 0x141619, hub: 0x5d666f,
-    busRoof: 0x9aa3bd, busRib: 0xb4bcc6, busDisplay: 0x14181d, marker: 0xd9a94a,
-  };
+  // Цвета колеса — единственная палитра, которая действительно общая на весь
+  // парк (sedan, bus и semi катаются на одном и том же чёрном с хромом).
+  const WHEEL_PALETTE = { tyre: 0x141619, hub: 0x5d666f };
 
+  // Состав парка берётся у китов. Порядок = порядок объявления китов, и он
+  // участвует в pickVehicleType — менять осознанно.
   const CAR_TYPES   = MeridianCarKit.CAR_TYPES;
   const BUS_TYPES   = MeridianBusKit.BUS_TYPES;
   const TRUCK_TYPES = MeridianSemiKit.TRUCK_TYPES;
   const VEH_TYPES   = [...CAR_TYPES, ...BUS_TYPES, ...TRUCK_TYPES];
   const VEH_W       = VEH_TYPES.reduce((s, t) => s + t.w, 0);
-  for (const t of CAR_TYPES) { t.track = t.W - .08; t.axles = [[t.L * .3, t.wr, 1], [-t.L * .3, t.wr, 1]]; }
 
+  // Профили движения по классам. gta.html читает этот объект как DRIVE[kind].
   const DRIVE = {
-    car:  { cruise: [7, 14],     acc: 4.2, dec: 11 },
-    bus:  { cruise: [6.5, 10.5], acc: 2.8, dec: 8.5 },
-    semi: { cruise: [6, 9],      acc: 2.1, dec: 7 },
+    car:  MeridianCarKit .DRIVE,
+    bus:  MeridianBusKit .DRIVE,
+    semi: MeridianSemiKit.DRIVE,
   };
 
+  // Свежий снимок дефолтных палитр — для чтения. Писать сюда бессмысленно:
+  // чтобы перекрасить, мутируйте PALETTE у соответствующего кита.
+  function snapshotPalettes() {
+    return Object.assign({},
+      MeridianCarKit.PALETTE,
+      MeridianBusKit.PALETTE,
+      MeridianSemiKit.PALETTE,
+      WHEEL_PALETTE);
+  }
+
+  // Weighted pick. Consumes exactly one rng() per call — that draw's position in
+  // the caller's generation order is contractual (contracts/README.md §4).
   function pickVehicleType(rng) {
     let r = rng() * VEH_W;
     for (const t of VEH_TYPES) { r -= t.w; if (r <= 0) return t; }
     return VEH_TYPES[VEH_TYPES.length - 1];
+  }
+
+  // Делегаты по kind — единственное место, где сборщик «знает» про киты.
+  function lightLayout(t)   { return (kitFor(t)).lightLayout(t); }
+  function vehicleWheels(t) { return (kitFor(t)).vehicleWheels(t); }
+  function kitFor(t) {
+    if (t.kind === 'bus')  return MeridianBusKit;
+    if (t.kind === 'semi') return MeridianSemiKit;
+    return MeridianCarKit;
   }
 
   function createFactory(opts) {
@@ -44,16 +80,30 @@
     if (!THREE) throw new Error('MeridianVehicles.createFactory: THREE is required');
     const G = opts.helpers || {};
     for (const need of ['mergeGeometries', 'boxAt', 'taperBox', 'cylX', 'cylZ']) {
-      if (typeof G[need] !== 'function') throw new Error('MeridianVehicles.createFactory: helpers.' + need + ' is required');
+      if (typeof G[need] !== 'function') {
+        throw new Error('MeridianVehicles.createFactory: helpers.' + need + ' is required');
+      }
     }
     const { mergeGeometries, cylX } = G;
-    const PAL = Object.assign({}, PALETTES, opts.palettes || {});
+
+    // Единый PAL: kit-палитры + колесо + опциональный override.
+    // Ключи, встречающиеся у нескольких китов (trim/glass/dark/chrome),
+    // разрешаются в пользу последнего — при равных дефолтах это невидимо,
+    // а если кто-то переопределил, он это сделал осознанно.
+    const PAL = Object.assign({},
+      MeridianCarKit.PALETTE,
+      MeridianBusKit.PALETTE,
+      MeridianSemiKit.PALETTE,
+      WHEEL_PALETTE,
+      opts.palettes || {});
+
+    // Одна геометрия линзы на head и tail всех тел — экономит буфер.
     const LENS_GEO = new THREE.BoxGeometry(.34, .15, .12);
 
-    const makeCarGeometry  = (t, paint) => MeridianCarKit.makeGeometry(G, t, paint, PAL);
-    const makeBusGeometry  = (t, paint, stripe, doorSide) =>
-      MeridianBusKit.makeGeometry(G, t, paint, stripe, doorSide, PAL);
-    const makeSemiGeometry = (t, paint, curt) => MeridianSemiKit.makeGeometry(G, t, paint, curt, PAL);
+    // Тонкие обёртки: кузов делает кит, PAL передаётся ему собранным выше.
+    const makeCarGeometry  = (t, paint)                => MeridianCarKit .makeGeometry(G, t, paint, PAL);
+    const makeBusGeometry  = (t, paint, stripe, door)  => MeridianBusKit .makeGeometry(G, t, paint, stripe, door, PAL);
+    const makeSemiGeometry = (t, paint, curt)          => MeridianSemiKit.makeGeometry(G, t, paint, curt, PAL);
 
     // Монетка двери живёт здесь — её позиция в rng-потоке контрактна.
     function makeVehicleGeometry(t, paint, tint, rng) {
@@ -62,6 +112,8 @@
       return makeCarGeometry(t, paint);
     }
 
+    // Unit wheel (радиус 1) — один InstancedMesh на весь парк, размеры через
+    // instance-scale. X — ось ширины шины: widthScale > 1 даёт сдвоенные колёса.
     function makeWheelGeometry() {
       const r = 1, w = r * .62;
       return mergeGeometries([
@@ -69,26 +121,6 @@
         cylX(.64, w + .03, 0, 0, 0, 16, PAL.chrome),
         cylX(.2, w + .06, 0, 0, 0, 10, PAL.hub),
       ]);
-    }
-
-    function lightLayout(t) {
-      if (t.kind === 'bus') return { s: 1.3,
-        heads: [[ t.W / 2 - .4, .95,  t.L / 2 + .02], [-t.W / 2 + .4, .95,  t.L / 2 + .02]],
-        tails: [[ t.W / 2 - .4, 1.5, -t.L / 2 - .02], [-t.W / 2 + .4, 1.5, -t.L / 2 - .02]] };
-      if (t.kind === 'semi') return { s: 1.15,
-        heads: [[ t.W / 2 - .4, 1.05,  t.L / 2 + .02], [-t.W / 2 + .4, 1.05,  t.L / 2 + .02]],
-        tails: [[ t.trailerW / 2 - .3, 1.6, -t.L / 2 - .08], [-t.trailerW / 2 + .3, 1.6, -t.L / 2 - .08]] };
-      const ly = t.wr * .95 + t.h - t.h * .26;
-      return { s: 1,
-        heads: [[ t.W / 2 - .34, ly,  t.L / 2 - .04], [-t.W / 2 + .34, ly,  t.L / 2 - .04]],
-        tails: [[ t.W / 2 - .34, ly, -t.L / 2 + .04], [-t.W / 2 + .34, ly, -t.L / 2 + .04]] };
-    }
-
-    // Wheel instances are [x, z, radius, widthScale] — mirrored to both sides of the vehicle.
-    function vehicleWheels(t) {
-      const half = t.track / 2, out = [];
-      for (const [z, r, w] of t.axles) { out.push([ half, z, r, w]); out.push([-half, z, r, w]); }
-      return out;
     }
 
     return {
@@ -102,7 +134,9 @@
   }
 
   window.MeridianVehicles = {
-    createFactory, PALETTES, pickVehicleType,
+    createFactory, pickVehicleType,
     CAR_TYPES, BUS_TYPES, TRUCK_TYPES, VEH_TYPES, VEH_W, DRIVE,
+    // Read-only снимок дефолтов. Для переопределения — мутируйте PALETTE у кита.
+    get PALETTES() { return snapshotPalettes(); },
   };
 })();
