@@ -169,6 +169,10 @@
 <script src="../assets/models/car.js"></script>
 <script src="../assets/models/bus.js"></script>
 <script src="../assets/models/semi.js"></script>
+<script src="../assets/models/building.js"></script>
+<script src="../assets/models/tree.js"></script>
+<script src="../assets/models/streetlight.js"></script>
+<script src="../assets/models/park.js"></script>
 <script src="../assets/vehicles.js"></script>
 
 <script type="importmap">
@@ -311,8 +315,7 @@ let facadeTex,winTex,groundTex;
 // skyline shares a single material instead of ~12 meshes (and 12 draw calls) per tower.
 const solidMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.92,metalness:.04});
 const glassMat=new THREE.MeshStandardMaterial({color:0xffffff,map:null,emissive:0xffb86b,emissiveMap:null,emissiveIntensity:0,roughness:.28,metalness:.5});
-const BODY_HEXES=[0x8a94a2,0x6f7d8c,0xb3b9c1,0x5c6b7a,0x9aa0a8,0x7d8894];
-const ROOF_HEX=0x2c3138,TRIM_HEX=0x14171d;
+// BODY_HEXES/ROOF_HEX/TRIM_HEX переехали в assets/models/building.js.
 
 /* ---------- city data ---------- */
 const buildings=[],trees=[],cars=[],peds=[];
@@ -339,44 +342,11 @@ function buildGround(){
 
 /* ---------- buildings ---------- */
 function addBuilding(cx,cz,w,d,h){
-  // ---- shell: body + roof slab + parapet + rooftop clutter merged into ONE mesh ----
-  const solid=[],add=(geo,color)=>solid.push({geo,color});
-  const body=new THREE.BoxGeometry(w,h,d);body.translate(0,h/2,0);add(body,pick(BODY_HEXES));
-
-  const cap=new THREE.BoxGeometry(w+0.5,0.4,d+0.5);cap.translate(0,h,0);add(cap,ROOF_HEX);
-  const par=(pw,pd,px,pz)=>{const p=new THREE.BoxGeometry(pw,1.2,pd);p.translate(px,h+0.6,pz);add(p,TRIM_HEX);};
-  par(w+0.5,0.4,0,d/2);par(w+0.5,0.4,0,-d/2);par(0.4,d+0.5,w/2,0);par(0.4,d+0.5,-w/2,0);
-
-  const n=1+(rng()*3|0);
-  for(let i=0;i<n;i++){const bw=rand(1.2,Math.min(w-2,3)),bd=rand(1.2,Math.min(d-2,3));
-    const b=new THREE.BoxGeometry(bw,rand(.8,2),bd);
-    b.translate(rand(-w/2+1,w/2-1),h+0.4,rand(-d/2+1,d/2-1));add(b,TRIM_HEX);}
-  if(h>36&&rng()<0.7){const a=new THREE.CylinderGeometry(0.08,0.14,rand(5,11),6);
-    a.translate(rand(-w/2+1,w/2-1),h+5,rand(-d/2+1,d/2-1));add(a,TRIM_HEX);}
-
-  const shell=new THREE.Mesh(mergeGeometries(solid),solidMat);
-  shell.position.set(cx,0,cz);shell.castShadow=true;shell.receiveShadow=true;scene.add(shell);
-
-  // ---- glazing: four facades merged into ONE mesh. UVs are tiled so a window keeps a real-world
-  // pitch (~2.2m) and one row per floor instead of stretching the texture over the whole tower.
-  const floors=Math.max(2,Math.round(h/3.1));
-  const winH=Math.max(2,h-3),wy=h/2+0.5;
-  const face=(ww,pos,rotY)=>{
-    const pg=new THREE.PlaneGeometry(ww,winH);
-    const uv=pg.attributes.uv.array;
-    for(let i=0;i<uv.length;i+=2){uv[i]*=ww/8.8;uv[i+1]*=floors/16;}
-    pg.applyMatrix4(new THREE.Matrix4().makeRotationY(rotY).setPosition(pos));
-    return pg;
-  };
-  const glass=new THREE.Mesh(mergeGeometries([
-    face(w-1.2,new THREE.Vector3(0,wy,d/2+0.06),0),
-    face(w-1.2,new THREE.Vector3(0,wy,-d/2-0.06),Math.PI),
-    face(d-1.2,new THREE.Vector3(w/2+0.06,wy,0),Math.PI/2),
-    face(d-1.2,new THREE.Vector3(-w/2-0.06,wy,0),-Math.PI/2)
-  ]),glassMat);
-  glass.position.set(cx,0,cz);scene.add(glass);
-
-  buildings.push({x:cx,z:cz,hw:w/2,hd:d/2});
+  MeridianBuildingKit.add({
+    THREE, geom, scene,
+    materials: { solid: solidMat, glass: glassMat },
+    cx, cz, w, d, h, rng, buildings,
+  });
 }
 function buildCity(){
   for(let i=0;i<GRID;i++)for(let j=0;j<GRID;j++){
@@ -400,32 +370,24 @@ function buildCity(){
 
 /* ---------- park ---------- */
 function buildPark(cx,cz){
-  const s=CELL-ROAD-4;
-  const lawn=new THREE.Mesh(new THREE.BoxGeometry(s,0.3,s),new THREE.MeshStandardMaterial({color:0x4c7a3f,roughness:1}));
-  lawn.position.set(cx,0.15,cz);lawn.receiveShadow=true;scene.add(lawn);
-  const pond=new THREE.Mesh(new THREE.CircleGeometry(s*0.22,32),new THREE.MeshStandardMaterial({color:0x2b6a8f,roughness:.15,metalness:.4}));
-  pond.rotation.x=-Math.PI/2;pond.position.set(cx+s*0.12,0.32,cz-s*0.1);scene.add(pond);
-  const path=new THREE.Mesh(new THREE.RingGeometry(s*0.3,s*0.42,48),new THREE.MeshStandardMaterial({color:0xb9a67e,roughness:1}));
-  path.rotation.x=-Math.PI/2;path.position.set(cx-s*0.05,0.31,cz+s*0.05);scene.add(path);
-  for(let i=0;i<26;i++){const a=rng()*Math.PI*2,r=rand(s*0.42,s*0.48);addTree(cx+Math.cos(a)*r,cz+Math.sin(a)*r);}
+  const positions = MeridianParkKit.add({
+    THREE, scene, cx, cz,
+    size: CELL-ROAD-4,
+    rng,
+  });
+  for (const t of positions) addTree(t.x, t.z);
 }
 
 /* ---------- trees (instanced) ---------- */
 function addTree(x,z){trees.push({x,z});}
 function buildTrees(){
-  const trunkGeo=new THREE.CylinderGeometry(0.16,0.24,2.2,7);trunkGeo.translate(0,1.1,0);
-  const leafGeo=new THREE.IcosahedronGeometry(1.5,0);leafGeo.scale(1,1.15,1);leafGeo.translate(0,3.1,0);
-  const trunkMat=new THREE.MeshStandardMaterial({color:0x6b4a2f,roughness:1});
-  const leafMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.9,flatShading:true});
-  const trunks=new THREE.InstancedMesh(trunkGeo,trunkMat,trees.length);trunks.castShadow=true;
-  const leaves=new THREE.InstancedMesh(leafGeo,leafMat,trees.length);leaves.castShadow=true;
-  const m=new THREE.Matrix4(),q=new THREE.Quaternion(),p=new THREE.Vector3(),s=new THREE.Vector3();
-  const col=new THREE.Color();
-  trees.forEach((t,i)=>{const sc=rand(.75,1.5),rot=rng()*Math.PI*2;
-    p.set(t.x,0,t.z);q.setFromAxisAngle(new THREE.Vector3(0,1,0),rot);s.set(sc,sc,sc);m.compose(p,q,s);trunks.setMatrixAt(i,m);leaves.setMatrixAt(i,m);
-    col.setHSL(.28+rng()*.06,.45,.32+rng()*.12);leaves.setColorAt(i,col);});
-  trunks.instanceMatrix.needsUpdate=true;leaves.instanceMatrix.needsUpdate=true;if(leaves.instanceColor)leaves.instanceColor.needsUpdate=true;
-  scene.add(trunks,leaves);
+  MeridianTreeKit.build({
+    THREE, scene, trees, rng,
+    materials: {
+      trunk: new THREE.MeshStandardMaterial({color:0x6b4a2f,roughness:1}),
+      leaf:  new THREE.MeshStandardMaterial({color:0xffffff,roughness:.9,flatShading:true}),
+    },
+  });
 }
 
 /* ---------- streetlights (single instanced mesh + light pool) ---------- */
@@ -435,24 +397,15 @@ function buildStreetlights(){
     [[1,1],[-1,-1]].forEach(([sx,sz])=>{const px=x+sx*(ROAD/2+0.6),pz=z+sz*(ROAD/2+0.6);if(px<-HALF||px>HALF||pz<-HALF||pz>HALF)return;streetlights.push({x:px,z:pz,dir:sx});});
   }
 
-  // merge pole + arm + head into ONE geometry (no shadows -> no hang)
-  const pole=new THREE.CylinderGeometry(0.12,0.16,7,8);pole.translate(0,3.5,0);
-  const arm=new THREE.BoxGeometry(1.4,0.16,0.16);arm.translate(0.7,6.9,0);
-  const head=new THREE.BoxGeometry(0.7,0.28,0.34);head.translate(1.35,6.75,0);
-  const merged=mergeGeometries([pole,arm,head]);
-
   const mat=new THREE.MeshStandardMaterial({color:0x2a2f36,roughness:.55,metalness:.5});
-  lampMesh=new THREE.InstancedMesh(merged,mat,streetlights.length);
-  lampMesh.castShadow=false;lampMesh.receiveShadow=false;   // <- key fix: no shadow pass for instances
-
-  const m=new THREE.Matrix4(),q=new THREE.Quaternion();
-  streetlights.forEach((s,i)=>{const rot=s.dir>0?Math.PI/2:-Math.PI/2;q.setFromAxisAngle(new THREE.Vector3(0,1,0),rot);m.compose(new THREE.Vector3(s.x,0,s.z),q,new THREE.Vector3(1,1,1));lampMesh.setMatrixAt(i,m);});
-  lampMesh.instanceMatrix.needsUpdate=true;
+  lampMesh=MeridianStreetlightKit.build({
+    THREE, geom, scene,
+    poles: streetlights,
+    material: mat,
+  });
 
   // pooled point lights (6) that follow the nearest streetlights at night
   for(let i=0;i<6;i++){const l=new THREE.PointLight(0xffb45a,0,26,2);l.visible=false;scene.add(l);lampLightPool.push(l);}
-
-  scene.add(lampMesh);
 }
 
 /* ---------- cars ---------- */
