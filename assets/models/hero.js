@@ -589,3 +589,24 @@
 
   window.MainPerson = { createHero: createHero };
 })();
+/* --------------------------------------------------------------------------
+ * Регистрация для viewer.html. Сам риг уже выставлен на window.MainPerson,
+ * так что сюда не нужно ничего из внутреннего scope.
+ * ------------------------------------------------------------------------ */
+(function () {
+  'use strict';
+  if (!window.MeridianAssets) return;
+  MeridianAssets.register({
+    id: 'character/hero',
+    label: 'Hero — procedural rig',
+    group: 'Characters',
+    notes: 'WALKS/RUNS из main_person.js; viewer гоняет hero.update(dt) в idle.',
+    makePreview: function (ctx) {
+      const hero = MainPerson.createHero({ THREE: ctx.THREE, RoundedBoxGeometry: ctx.RoundedBoxGeometry });
+      const wrap = new ctx.THREE.Group();
+      wrap.add(hero.group);
+      wrap.userData.tick = function (t, dt) { hero.update(dt, { speed: 0, sprint: false }); };
+      return wrap;
+    },
+  });
+})();

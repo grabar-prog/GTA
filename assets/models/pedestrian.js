@@ -113,3 +113,42 @@
 
   window.MeridianPedestrians = { createFactory, PALETTES, RIG };
 })();
+
+/* --------------------------------------------------------------------------
+ * Регистрация для viewer.html. Ставит N пешеходов в ряд, чтобы видеть
+ * палитру рубашек/кожи вместе. Всё через window.MeridianPedestrians.
+ * ------------------------------------------------------------------------ */
+(function () {
+  'use strict';
+  if (!window.MeridianAssets) return;
+  MeridianAssets.register({
+    id: 'character/pedestrian',
+    label: 'Pedestrian — instanced rig (×5)',
+    group: 'Characters',
+    notes: 'InstancedMesh; один меш на часть тела, шаг — одна Rx-качалка на конечность.',
+    makePreview: function (ctx) {
+      const THREE = ctx.THREE, geom = ctx.geom;
+      const PED = MeridianPedestrians.createFactory({ THREE: THREE, helpers: geom });
+      const N = 5;
+      const group = new THREE.Group();
+      const rig = PED.createRig(group, N);
+      const PAL = PED.palettes, R = PED.RIG;
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+      const p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
+      const gap = 0.9, x0 = -(N - 1) * gap / 2;
+      for (let i = 0; i < N; i++) {
+        rig.setColors(i, PAL.shirt[i % PAL.shirt.length], PAL.skin[i % PAL.skin.length]);
+        const x = x0 + i * gap;
+        rig.torso.setMatrixAt(i, m.compose(p.set(x,               R.hip,      0), q, s));
+        rig.head .setMatrixAt(i, m.compose(p.set(x,               R.head,     0), q, s));
+        rig.armL .setMatrixAt(i, m.compose(p.set(x - R.shX,       R.shoulder, 0), q, s));
+        rig.armR .setMatrixAt(i, m.compose(p.set(x + R.shX,       R.shoulder, 0), q, s));
+        rig.legL .setMatrixAt(i, m.compose(p.set(x - R.hipX,      R.hip,      0), q, s));
+        rig.legR .setMatrixAt(i, m.compose(p.set(x + R.hipX,      R.hip,      0), q, s));
+      }
+      rig.commitColors();
+      for (const mesh of rig.meshes) mesh.instanceMatrix.needsUpdate = true;
+      return group;
+    },
+  });
+})();

@@ -162,9 +162,14 @@
   }, 4000);
 </script>
 
-<script src="../assets/main_person.js"></script>
+<script src="../assets/geom.js"></script>
+<script src="../assets/asset-registry.js"></script>
+<script src="../assets/models/hero.js"></script>
+<script src="../assets/models/pedestrian.js"></script>
+<script src="../assets/models/car.js"></script>
+<script src="../assets/models/bus.js"></script>
+<script src="../assets/models/semi.js"></script>
 <script src="../assets/vehicles.js"></script>
-<script src="../assets/pedestrians.js"></script>
 
 <script type="importmap">
 {
@@ -200,57 +205,13 @@ const rng=mulberry32(20240607);
 const rand=(a,b)=>a+(b-a)*rng();
 function pick(arr){return arr[(rng()*arr.length)|0];}   // <-- was missing, caused the crash
 
-/* ---------- geometry helpers (no BufferGeometryUtils in this build) ---------- */
-const _WHITE=new THREE.Color(1,1,1);
-// Merge a list of geometries — or [{geo,color},…] for vertex-coloured parts — into one buffer.
-// UVs are carried through whenever every part has them; without uv the emissive window map on the
-// facades would sample undefined coordinates and the towers lit up as random glowing smudges.
-function mergeGeometries(parts){
-  const list=parts.map(p=>{const src=(p&&p.geo)||p;return {geo:src.index?src.toNonIndexed():src,color:p?p.color:null};});
-  let total=0;for(const it of list)total+=it.geo.attributes.position.count;
-  const hasUV=list.every(it=>!!it.geo.attributes.uv);
-  const pos=new Float32Array(total*3),nor=new Float32Array(total*3),col=new Float32Array(total*3);
-  const uv=hasUV?new Float32Array(total*2):null;
-  let off=0,anyColor=false;const tmp=new THREE.Color();
-  for(const it of list){
-    const g=it.geo;if(!g.attributes.normal)g.computeVertexNormals();
-    const n=g.attributes.position.count,c=it.color==null?_WHITE:tmp.set(it.color);
-    pos.set(g.attributes.position.array,off*3);nor.set(g.attributes.normal.array,off*3);
-    if(hasUV)uv.set(g.attributes.uv.array,off*2);
-    for(let i=0;i<n;i++){const j=(off+i)*3;col[j]=c.r;col[j+1]=c.g;col[j+2]=c.b;}
-    if(it.color!=null)anyColor=true;
-    off+=n;
-  }
-  const out=new THREE.BufferGeometry();
-  out.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  out.setAttribute('normal',new THREE.BufferAttribute(nor,3));
-  if(hasUV)out.setAttribute('uv',new THREE.BufferAttribute(uv,2));
-  if(anyColor)out.setAttribute('color',new THREE.BufferAttribute(col,3));
-  return out;
-}
-
-/* ---------- geometry sugar (keeps the builders below readable) ---------- */
-// Parts are handed to mergeGeometries() either as plain geometries or as {geo,color} pairs and always
-// end up in ONE buffer per object — that is what lets a detailed car cost a single draw call.
-function boxAt(w,h,d,x,y,z,color){const g=new THREE.BoxGeometry(w,h,d);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-// Box with the top face scaled inwards: car greenhouses, hoods, soft shoulders.
-function taperBox(w,h,d,x,y,z,sx,sz,color){
-  const g=new THREE.BoxGeometry(w,h,d),p=g.attributes.position;
-  for(let i=0;i<p.count;i++){if(p.getY(i)>0){p.setX(i,p.getX(i)*sx);p.setZ(i,p.getZ(i)*sz);}}
-  p.needsUpdate=true;g.computeVertexNormals();g.translate(x,y,z);return color==null?g:{geo:g,color};
-}
-// Cylinder lying on its side (axis = X). A wheel built this way rolls with a plain Rx(spin).
-function cylX(r,h,x,y,z,seg,color){const g=new THREE.CylinderGeometry(r,r,h,seg||18);g.rotateZ(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-// Same cylinder along Z — used for lorry fuel tanks and bus AC fans.
-// Ellipsoid/capsule sugar for the hand-modelled hero — same {geo,color} pairs mergeGeometries eats.
-function sphAt(rx,ry,rz,x,y,z,color,seg){const s=seg||14;const g=new THREE.SphereGeometry(1,s,s-4);g.scale(rx,ry,rz);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-function capY(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-function capX(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.rotateZ(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-function capZ(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.rotateX(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-function cylY(r,h,x,y,z,color){const g=new THREE.CylinderGeometry(r,r,h,14);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-// Box rotated about Y first — lapels, collars and other flat flaps that must sit at an angle.
-function ebox(w,h,d,x,y,z,ry,color){const g=new THREE.BoxGeometry(w,h,d);if(ry)g.rotateY(ry);g.translate(x,y,z);return color==null?g:{geo:g,color};}
-function cylZ(r,h,x,y,z,seg,color){const g=new THREE.CylinderGeometry(r,r,h,seg||14);g.rotateX(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+/* ---------- geometry sugar — from assets/geom.js ----------
+ * boxAt / taperBox / cylX / … теперь живут в assets/geom.js
+ * (classic-скрипт, подключён выше). Кит создаётся здесь один раз и
+ * разворачивается деструктуризацией — дальше по файлу имена те же. */
+const geom = MeridianGeom.createKit({ THREE });
+const { mergeGeometries, boxAt, taperBox, cylX, cylY, cylZ,
+        sphAt, capX, capY, capZ, ebox } = geom;
 
 /* ---------- constants ---------- */
 const GRID=10, CELL=58, ROAD=16, SIDEWALK=3.5;
@@ -502,10 +463,7 @@ function buildStreetlights(){
 // Determinism: pickVehicleType(rng), the paint/tint picks below and the bus-door coin inside
 // makeVehicleGeometry(t, paint, tint, rng) all keep their original rng() positions — contracts/
 // README.md §4.
-const V = MeridianVehicles.createFactory({
-  THREE,
-  helpers: { mergeGeometries, boxAt, taperBox, cylX, cylZ },
-});
+const V = MeridianVehicles.createFactory({ THREE, helpers: geom });
 const { CAR_TYPES, BUS_TYPES, TRUCK_TYPES, VEH_TYPES, VEH_W, DRIVE } = MeridianVehicles;
 const carBodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.34,metalness:.55});
 const wheelMat  =new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,metalness:.18});
@@ -604,10 +562,7 @@ function buildCars(){
 // under its original name so updatePeds / limbInstance keep reading it untouched. Spawn RNG order
 // is unchanged: the shirt/skin picks stay inside the per-walker loop below, one draw each, in the
 // same position they occupied before (contracts/README.md §4).
-const PED = MeridianPedestrians.createFactory({
-  THREE,
-  helpers: { mergeGeometries },
-});
+const PED = MeridianPedestrians.createFactory({ THREE, helpers: geom });
 const PED_RIG = MeridianPedestrians.RIG;
 const PED_LIMIT=HALF-6;   // walkers turn around here — the ground plane itself ends at ±HALF
 let pedRig=null;          // { torso, head, armL, armR, legL, legR, setColors, commitColors }
