@@ -7,7 +7,7 @@
 - **C-ANA-1** The head sits above the torso. Rig (a ~1.8 m walker): `PED_RIG = {hip:.84, shoulder:1.32, head:1.58, hipX:.14, shX:.29}`; torso top **y = 1.47**, head centre **1.58**, crown ≈ 1.79. Landmarks that must hold: `headTop − torsoTop ≈ 0.32`, neck overlap `≈ 0.1`, feet at `y ≈ 0.025`.
 - **C-ANA-2** Head geometry is built around its own origin — the instance's Y **is** the head centre. No baked-in translate offset.
 - **C-ANA-3** Limbs hang from their own pivot so a single `Rx()` swing animates them; one `InstancedMesh` per rig part (torso / head / arm L / arm R / leg L / leg R). Crowd animation must not allocate per-frame matrices.
-- **C-ANA-4** The face texture is procedural canvas (`faceCanvas()`, painted at build time); the mesh whose `material.map === FACE_OPEN` is the diagnostic handle (`SH.skull()` in the portrait rig). Any head-geometry change keeps that mapping intact.
+- **C-ANA-4** The hero face is built from geometry, not a texture: sclera sphere + pupil cylinder + iris torus, plus a skin-coloured eyelid dome that **slides** in Y to blink (`LID_OPEN_Y` in the eye group's `userData`). Never scale the eye group to blink — a scaled torus collapses into a horizontal sliver and the sclera surface crosses it, which reads as a stray line at oblique angles even when the eye is "open".
 
 Verify: portrait shots, not the city harness — procedure in *Rationale → Verification*.
 
@@ -30,16 +30,26 @@ The instance's Y **is** the head centre; no baked-in offset. That offset used to
 
 Arms and legs are modelled relative to their pivot so a single `Rx()` swing animates them. One `InstancedMesh` per rig part keeps the crowd cheap: animation must not allocate per-frame matrices.
 
-### C-ANA-4 — Face texture is procedural canvas
+### C-ANA-4 — The hero face is built from geometry, not a texture
 
-`faceCanvas()` paints the face into a canvas at build time; the mesh whose `material.map === FACE_OPEN` is the diagnostic handle (`SH.skull()` in the portrait rig). Keep that mapping intact through any head change, otherwise the portrait diagnostics go blind.
+Eyes are sclera sphere + pupil cylinder + iris torus + eyelid skin dome — see `assets/main_person.js`, the `[b.eyeL, b.eyeR].forEach(...)` construction. The lid **slides**: a blink brings it down over the sclera. Scaling the whole eye group would crush the iris torus into a horizontal sliver and let the sclera surface cross it — that is why the old blink read as a stray line even when the eye was "open".
+
+This rule replaced a `faceCanvas()` / `material.map === FACE_OPEN` contract that no longer exists: the pre-extraction hero drew a face into a canvas, the current rig does not.
 
 ### Verification
 
-Portrait shots, not the city harness: freeze the game loop (`animate=()=>{}`), pose via `SH.pose({x,z,vx,vz,heading,gait,sprint,stagger,lookYaw,lookPitch})` (drives `animateCharacter(0.016,…)` ×6 and never calls `updatePlayer`, so traffic can't shove him around mid-shot), then render manually — otherwise rAF overwrites the camera.
+Portrait shots, not the city harness. Two supported ways to place the hero in a pose:
 
-- `SH.cam(d, …)`: **d > 0 → in front of his face, d < 0 → behind his back**; `camSide()` for a profile view.
-- Shots land in `%TEMP%\meridian-char\`, never into the repo; freeze before shooting by overriding `animate` with a no-op **and then waiting ~700 ms** — an rAF callback may already be queued holding the original `updatePlayer`, which yanks the camera back. Also hide the start overlay, add the `playing` body class, and per shot set `dayTime = 8.6/24; updateCycle(0)`, restoring `camera.fov` + `updateProjectionMatrix()`.
+- **In game.** Freeze the loop (`animate=()=>{}`), then drive the hero directly:
+  `hero.applyPose(hero.poseGait(t, hero.WALKS[0], false)); hero.breathe(t, 0.016);`
+  `hero` is the object returned by `MainPerson.createHero({THREE, RoundedBoxGeometry})` from `assets/main_person.js`; `buildCharacter()` stores it on the module-local `hero` binding and its wrapper group on `charGroup`.
+- **In the workbench.** Open `assets/main_person.html` — it loads the same `assets/main_person.js` and exposes every pose/gait/jump control with no game loop running.
+
+Camera conventions:
+
+- The wrapper group owns world position + `rotation.y`; the rig owns everything below (see C-ANA-1…3).
+- To shoot a specific frame: hide the start overlay, add the `playing` body class, `dayTime = 8.6/24; updateCycle(0)`, set `charGroup.position` / `charGroup.rotation.y`, then call `renderer.render(scene, camera)` — rAF will otherwise overwrite the camera between setup and shot. Wait ~700 ms after replacing `animate` with a no-op: an already-queued rAF callback may still hold the original `updatePlayer`.
+- Shots land in `%TEMP%\meridian-char\`, never into the repo.
 - Puppeteer gotcha that costs runs: functions passed to `page.evaluate` are serialized, so Node-scope closures do not cross the boundary — referencing a loop variable inside one throws `ReferenceError`. Thread data through an argument object instead.
 
 ## Open questions
@@ -57,7 +67,7 @@ shots taken from the front say nothing about hair.
 
 1. **Hair** reads as a helmet/bowl — an even straight rim instead of strands.
 2. **Backpack** reads as a light oval shield.
-3. **Seat sphere visible between the legs** — `sphAt(.12,.062,.108,…)` on `hips`.
+3. **A sphere artefact visible between the legs** — reported against the pre-extraction rig; the `sphAt(.12,.062,.108,…)` call it named no longer exists in `assets/main_person.js`, so this is likely already gone. Confirm against the current rig before touching it.
 4. **Dark patches left on shins/knees.**
 5. **Hands read as white mitts**, fingers invisible at 6 m: needs roughly a 9 cm palm / ~18 cm hand
    length, a separate thumb plus four tapered finger capsules, and a darker tint so they stop

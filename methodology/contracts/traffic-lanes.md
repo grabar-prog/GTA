@@ -62,4 +62,4 @@ Reference fleet (52 vehicles, weights-driven so composition shifts with the seed
 
 ### Geometry budget (why it's one mesh per body)
 
-Body = 1 merged mesh per vehicle; wheels and headlight/lens pairs live in shared `InstancedMesh`es across the whole park: **46 bodies + 4 instanced meshes instead of ~90 boxes**. Buildings follow the same discipline — a shell with vertex colours plus one glazing mesh shared by a 2×2 block cluster (≈12 meshes → 2). Break this and draw calls explode to ~4000, which presents exactly like a hang.
+Body = 1 merged mesh per vehicle; wheels and headlight/lens pairs live in shared `InstancedMesh`es across the whole park: **52 bodies + 4 instanced meshes instead of ~90 boxes**. Buildings follow the same discipline — a shell with vertex colours plus one glazing mesh shared by a 2×2 block cluster (≈12 meshes → 2). Break this and draw calls explode to ~4000, which presents exactly like a hang.

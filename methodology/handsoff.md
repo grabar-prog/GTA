@@ -9,7 +9,7 @@ once below and written up in its owner file.
 - Gate: **all 23 checks green, exit 0**, re-measured 2026-09-19 at `verified@cf4c702` (≈24.6 s wall under SwiftShader; generation alone 7.73 s). Reference JSON and canonical commands: [contracts/harness.md](contracts/harness.md).
 - Last verified behaviour change: right of way at crossings — [contracts/right-of-way.md](contracts/right-of-way.md).
 - Open defects in the city / traffic / camera layer: **none**. Unresolved *decisions* are not defects — see below.
-- Tooling: `tools/lint-refs.sh` is the repo linter — anchor citations, router coverage, doc links, the pinned Three.js r128 API in `game/gta.html`, anchor format and documented prefixes, provenance labels on run metrics, numbered TODOs (exit 0/1), green since 2026-09-20. It also reports coverage — currently **33 of 36 anchors are uncited**, because no comment in `game/gta.html` cites an invariant yet; the only 3 cited live in `AGENTS.md` examples.
+- Tooling: `tools/lint-refs.sh` is the repo linter — anchor citations, router coverage, doc links, the pinned Three.js 0.160 API in `game/gta.html`, anchor format and documented prefixes, provenance labels on run metrics, numbered TODOs (exit 0/1), green since 2026-09-20. It also reports coverage — **most anchors are uncited**, because almost no comment in `game/gta.html` cites an invariant; the few citations that exist live in `AGENTS.md` examples.
 - Since that run, docs-only edits (`AGENTS.md` as entry point, this file as a cache) plus one comment fix in `game/gta.html`: the HUD traffic-multiplier snap is a **0.05** grid, not quarter steps.
 
 ## Open questions
@@ -18,12 +18,10 @@ The single list: name it here, write it up under *Open questions* in the owner c
 not accepted limitations — each waits on a decision or a measurement. Accepted-as-is items belong to
 [docs/limitations.md](docs/limitations.md); work with a known shape belongs to a `TODO(sNN)` comment.
 
-- **chase-camera orientation** → [contracts/camera.md](contracts/camera.md) § Open questions. Measure before touching the sign; ask before committing a flip.
-- **hero polish (6 leads)** → [contracts/character-anatomy.md](contracts/character-anatomy.md) § Open questions. Seen in earlier renders, not confirmed against the current one.
-- **flat window surface vs. explicit namespace** → methodology/contracts/harness.md.
-  ~20 names are mirrored onto window for check-city.js. When the list grows past
-  a comfortable size, replace with window.MERIDIAN = {game, world, helpers, …}
-  and update the harness in one commit.
+- **chase-camera orientation** → [contracts/camera.md](contracts/camera.md) § Open questions.
+- **hero polish (6 leads)** → [contracts/character-anatomy.md](contracts/character-anatomy.md) § Open questions.
+- **flat window surface vs. explicit namespace** → [contracts/harness.md](contracts/harness.md) § Open questions.
+- **`useLegacyLights` removal and recalibration** → [contracts/render-api.md](contracts/render-api.md) § Open questions. Owner: `TODO(s27)`.
 
 ## What next
 
@@ -36,8 +34,8 @@ Hero visual polish — the 6-item list in [contracts/character-anatomy.md](contr
 
 ## Watch out for
 
-- One file: every edit lives inside `game/gta.html`. No extracted modules, no second HTML/JS/CSS.
-- Three.js **r128** API only — the `CapsuleGeometry` polyfill stays, as do `outputEncoding`/`sRGBEncoding`.
+- `game/gta.html` is the only **game** file. The hero rig is extracted to `assets/main_person.js` (loaded as a classic `<script>` because `file://` blocks sibling ES-module imports); its pose workbench `assets/main_person.html` sits beside it. No second game HTML/JS/CSS.
+- Three.js **0.160.x** via importmap. The r128 API — `outputEncoding`, `sRGBEncoding`, the `CapsuleGeometry` polyfill — is gone. See [contracts/render-api.md](contracts/render-api.md) C-API-1…7.
 - The abandoned "splice" workflow rebuilt the file from a backup snapshot and would silently revert direct edits. Do not resurrect it; edit in place.
 - Hero review shots need the portrait rig, which is **not in the repo** — rebuild it in the scratchpad. Procedure, camera-sign convention and the puppeteer serialization trap: [contracts/character-anatomy.md](contracts/character-anatomy.md) → *Verification*. Shots go to `%TEMP%\meridian-char\`, never into the repo (the city harness uses its own `%TEMP%\meridian-check\`).
 - Contracts are amended, never relaxed; the seeded RNG is contractual: [contracts/README.md](contracts/README.md).
@@ -53,4 +51,4 @@ Hero visual polish — the 6-item list in [contracts/character-anatomy.md](contr
 
 ## Files
 
-Routing by task type lives in [`AGENTS.md`](../AGENTS.md); the authoritative function/line map of `game/gta.html` is [docs/architecture.md](docs/architecture.md). Environment adapters under [`ides/`](../ides/) are generated — never hand-edit a snapshot.
+Routing by task type lives in [`AGENTS.md`](../AGENTS.md); the function/section map of `game/gta.html` is [docs/architecture.md](docs/architecture.md) (line numbers stale — re-derive with `grep -n` before use). Environment adapters under [`ides/`](../ides/) are generated — never hand-edit a snapshot.

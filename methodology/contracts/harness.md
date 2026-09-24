@@ -12,7 +12,7 @@
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
 - **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (23 checks) are different programs with different measurement points. Always state which version a number came from.
 - **Thresholds are contracts:** amend them with a reason ([README.md](README.md)), never silently relax; the seeded RNG is contractual, so reference numbers move whenever generation order changes.
-- **Console noise that is normal:** 4× Edge *"Tracking Prevention blocked access to storage for …three.min.js"*; FPS ≈8 under SwiftShader at 1280×760 with shadows (player speed stays correct because `dt` is clamped to 0.05 s).
+- **Console noise that is normal:** 4× Edge *"Tracking Prevention blocked access to storage for …unpkg.com/three@0.160…"*; FPS ≈8 under SwiftShader at 1280×760 with shadows (player speed stays correct because `dt` is clamped to 0.05 s).
 
 ## Rationale & examples — read only when editing that rule
 
@@ -160,3 +160,24 @@ The audit is a **pure simulation**: `updateCars(0.05)` in a loop with no renderi
 - The harness was rebuilt during the traffic fix (it had been missing from the tree). Keep it in the repo — it is the only executable spec this project has.
 - Globals of the classic `<script>` are reachable from `page.evaluate()` by name: `scene`, `renderer`, `camera`, `player`, `dayTime`, `glassMat`, `lampLightPool`, `buildings`, `moonMesh`. Cheap diagnostics and time-travel (`dayTime = 0.83`) without touching game code.
 - Agent shell (LM Studio): GUI spawn is allowed only for `node_modules` loaded from the scratchpad — see *Where it can actually run*.
+
+
+## Open questions
+
+Unresolved items awaiting a decision — not invariants, not accepted limitations (those live in
+[docs/limitations.md](../docs/limitations.md)). The owner list is in [handsoff.md](../handsoff.md);
+the detail lives only here.
+
+### flat window surface vs. explicit namespace
+
+`game/gta.html` runs as an ES module, so its top-level bindings are private to the module. The
+harness reaches them through a trailing block of `Object.assign(window, {…})` /
+`Object.defineProperties(window, {…})` calls — roughly 20 names (`cars`, `player`, `buildings`,
+`updateCars`, `dayTime`, `renderer` as an accessor, …). When that list grows past a comfortable
+size, promote it to a single `window.MERIDIAN = {game, world, helpers, …}` namespace and update
+[check-city.js](../../harness/check-city.js) to match, in one commit. There is no other consumer
+of the flat names today, so the change is mechanical — a rename, not a refactor.
+
+Decide when the list actually becomes awkward. Until then the flat names are the contract: any
+new state that check-city.js needs must be added to that trailing block or it dies with
+`ReferenceError`.

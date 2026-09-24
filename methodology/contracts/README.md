@@ -11,13 +11,14 @@ Read only the *Rules* block unless you are changing the behaviour it governs; on
 | Contract | Scope | Verified by |
 | --- | --- | --- |
 | [world-constants.md](world-constants.md) | numeric layout of the map, derived quantities, spawn positions | `spawn` block in harness JSON + code review |
-| [render-api.md](render-api.md) | Three.js **r128** API surface; forbidden newer APIs | substring check against downloaded `three.min.js` r128 |
+| [render-api.md](render-api.md) | Three.js **0.160.x** API surface; forbidden r128 leftovers | `tools/lint-refs.sh` §7 (substring check against `game/gta.html`) |
 | [boot-sequence.md](boot-sequence.md) | load order, loader visibility, error surfacing | harness waits for the loader to hide; `errs === []` |
 | [traffic-lanes.md](traffic-lanes.md) | spawn lines, lane offsets, wrap point, ground-plane containment | `spawn` + `sim` blocks (checks 6–12, 18–19) |
 | [right-of-way.md](right-of-way.md) | intersection arbitration, deadlock freedom, no body overlap | `sim` audit (checks 21–23) |
 | [character-anatomy.md](character-anatomy.md) | head/torso proportions, rig pivots, face texture | portrait shots — ad-hoc scratchpad script; procedure in this file's §Verification, not part of the city harness |
 | [camera.md](camera.md) | chase-camera look sign, height formula, exact-AABB collision, capture lifecycle | `cam` block in harness JSON + code review |
 | [harness.md](harness.md) | the 23 acceptance checks, thresholds, reference run numbers | `node harness/check-city.js` exit code |
+| [asset-contract.md](asset-contract.md) | character asset format: units, pose, mirrors, layers, capabilities | schema-only; no executable check yet |
 
 ## Rules for changing a contract
 

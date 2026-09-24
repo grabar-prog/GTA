@@ -1,0 +1,20 @@
+# Normalize line endings in the working tree: LF for text, none for binaries.
+# Prevents the "LF will be replaced by CRLF" churn across Windows/Linux/agent shells.
+* text=auto eol=lf
+
+# Declare the repo's languages so GitHub's linguist is honest.
+*.html  text eol=lf
+*.js    text eol=lf
+*.md    text eol=lf
+*.sh    text eol=lf
+*.json  text eol=lf
+
+# Force LF in shell scripts regardless of autocrlf, otherwise a Windows CRLF
+# checkout breaks `bash tools/lint-refs.sh` with "command not found: \r".
+*.sh    text eol=lf
+tools/*.sh text eol=lf
+
+# Binary — never touched.
+*.png   binary
+*.jpg   binary
+*.ico   binary

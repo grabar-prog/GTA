@@ -22,7 +22,9 @@ City generation takes ~1–2 s on a GPU (~3.5–4 s under headless SwiftShader).
 
 ```
 game/gta.html            the whole game — one file, single source of truth
-harness/check-city.js    headless harness: loads the page, asserts 23 contracts, prints JSON + screenshots
+assets/main_person.js    procedural hero rig (classic <script>, shared with the pose workbench)
+assets/main_person.html  pose workbench for the hero rig (not part of the city)
+harness/check-city.js    headless harness: loads the page, asserts 23 checks, prints JSON + screenshots
 methodology/contracts/   formal, testable behaviour specs (see methodology/contracts/README.md)
 methodology/docs/        architecture map · performance internals · limitations in detail
 methodology/handsoff.md  state at the end of the last session + open work
@@ -33,7 +35,7 @@ LICENSE                  MIT
 harness/package.json     dev-only dependency: puppeteer-core (for the harness)
 ```
 
-**One file = one source of truth.** Nothing is extracted into modules. `harness/check-city.js` resolves `game/gta.html` relative to its own directory, so moving the HTML breaks it unless you pass the path as an argument.
+**One game file = one source of truth.** The city lives entirely in `game/gta.html`; the hero rig is the sole extracted asset (`assets/main_person.js`, a classic `<script>` loaded by `gta.html` because `file://` blocks sibling ES-module imports), with its pose workbench `assets/main_person.html` beside it. `harness/check-city.js` resolves `game/gta.html` relative to its own directory, so moving the HTML breaks it unless you pass the path as an argument.
 
 ## Verify it
 
@@ -58,7 +60,7 @@ Numbers, derivations and cross-references: [methodology/contracts/world-constant
 - Only 6 streetlights actually illuminate; distant poles read as silhouettes at night (compensated by emissive windows).
 - No LOD or distance culling — the entire city is always in the scene.
 - Vehicles keep their lane and yield at crossings, but never turn: a turn would need trajectory rebuilding that the model doesn't have. Pedestrians pace their own sidewalk strip and don't cross districts.
-- Outer road lines `0` and `GRID` sit exactly on the ground-plane border (`±290`). The asphalt itself only exists inside `±290`, so standing on an outer line shows a break in the pavement; traffic wraps at `±(HALF+APRON)=±300` thanks to the 10 m dirt apron.
+- Outer road lines `0` and `GRID` sit exactly on the ground-plane border (`±290`). The asphalt itself only exists inside `±290`, so standing on an outer line shows a break in the pavement; vehicles wrap at `±HALF = ±290`, and only a long body's nose reaches into the 10 m dirt apron (out to `±300`).
 - Vehicles pop in/out at the map edge on wrap-around, with no fade.
 - `renderer.useLegacyLights = true` keeps the r128-calibrated light intensities after the Three.js migration — a stopgap until the sun / hemi / moon / streetlight-pool numbers are re-tuned for the modern (r155+) light default. Visual output is currently identical to the pre-migration build.
 - No save state, no audio, no boardable vehicles.

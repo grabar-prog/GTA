@@ -64,20 +64,21 @@ The rule exists so the stopgap does not become permanent:
 
 - The `TODO(sNN):` comment in `initRenderer()` names the owner session.
 - `tools/lint-refs.sh` §7 fails if `renderer.useLegacyLights` appears without a matching `TODO(sNN): … useLegacyLights`.
-- Removing it is a **recalibration commit** — see the open question in [handsoff.md](../handsoff.md). Do not roll it into an unrelated edit; every intensity in `initRenderer()` and `updateCycle()` is a candidate to change, and nothing in the harness can tell whether the new numbers are right.
+- Removing it is a **recalibration commit** — see this file's § Open questions. Do not roll it into an unrelated edit; every intensity in `initRenderer()` and `updateCycle()` is a candidate to change, and nothing in the harness can tell whether the new numbers are right.
 
-### Surface actually used (grep-verified)
+### Surface actually used (grep-verified across `game/gta.html` + `assets/main_person.js`)
 
 ```
 ACESFilmicToneMapping  BackSide            BoxGeometry         BufferAttribute
 BufferGeometry         CanvasTexture       CapsuleGeometry     CircleGeometry
-Color                  CylinderGeometry    DirectionalLight    Fog
-Group                  HemisphereLight     IcosahedronGeometry InstancedMesh
-Matrix4                Mesh                MeshBasicMaterial   MeshStandardMaterial
-PCFSoftShadowMap       PerspectiveCamera   PlaneGeometry       PointLight
-Points                 PointsMaterial      Quaternion          RepeatWrapping
-RingGeometry           Scene               ShaderMaterial      SphereGeometry
-SRGBColorSpace         Vector3             WebGLRenderer
+Color                  ConeGeometry        CylinderGeometry    DirectionalLight
+Fog                    Group               HemisphereLight     IcosahedronGeometry
+InstancedMesh          Matrix4             Mesh                MeshBasicMaterial
+MeshStandardMaterial   PCFSoftShadowMap    PerspectiveCamera   PlaneGeometry
+PointLight             Points              PointsMaterial      Quaternion
+RepeatWrapping         RingGeometry        RoundedBoxGeometry  Scene
+ShaderMaterial         SphereGeometry      SRGBColorSpace      TorusGeometry
+Vector3                WebGLRenderer
 ```
 
 ### Verification commands
@@ -101,5 +102,27 @@ Then the real gate: `node harness/check-city.js`.
 ### Related
 
 - Instanced buffers are sized from the **actual fleet**, never hardcoded — see [traffic-lanes.md](traffic-lanes.md) and harness checks 16–17 (`unwrittenWheels === 0`, `unwrittenLenses === 0`).
-- The `useLegacyLights` removal is an open question in [handsoff.md](../handsoff.md) → *Open questions*; the numeric recalibration lands there, not here.
+- The `useLegacyLights` removal is an open question in this file's § Open questions; the numeric recalibration lands there, not here.
 - Where each symbol above lives in the file: [docs/architecture.md](../docs/architecture.md).
+
+## Open questions
+
+Unresolved items awaiting a decision — not invariants, not accepted limitations (those live in
+[docs/limitations.md](../docs/limitations.md)). The owner list is in [handsoff.md](../handsoff.md);
+the detail lives only here.
+
+### `useLegacyLights` removal and the intensity recalibration
+
+`renderer.useLegacyLights = true` (C-API-7) is a migration stopgap. Removing it is a
+**recalibration commit**, not a mechanical one: r155 changed the light default so that every
+intensity in this file means something different — a `HemisphereLight(0.7)` lights the scene
+roughly π× brighter at the old default than at the new one. Every candidate in `initRenderer()`
+(sun, moon, hemi, `toneMappingExposure`) and `updateCycle()` (sun/hemi/moon curves,
+`glassMat.emissiveIntensity`, streetlight-pool intensity) needs a new number and a fresh
+screenshot.
+
+Why it is still open: no reference frame says what the new numbers should be. The migration
+pinned the old default precisely so the visual output of the 0.160 upgrade matched r128; dropping
+the flag without re-tuning every intensity would be a silent, uncalibrated change to the look of
+the whole city, and nothing in the harness can see look. Decide by side-by-side night/day
+screenshots at fixed viewpoints; ask before committing.

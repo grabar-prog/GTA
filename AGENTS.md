@@ -16,6 +16,7 @@ Existing Russian  is **not translated opportunistically**: leave it as-is until 
 ## Repository layout
 
 - `game/` — playable substrate (`game/gta.html`). Playable without a build, Three.js from CDN.
+- `assets/` — procedural hero rig (`assets/main_person.js`, a classic `<script>`) and its pose workbench (`assets/main_person.html`). Loaded by `game/gta.html`.
 - Contracts: [methodology/contracts/](<methodology/contracts/>), architecture: [methodology/docs/](<methodology/docs/>).
   - [methodology/contracts/](<methodology/contracts/>) — invariants (camera, traffic-lanes, right-of-way, render-api, character-anatomy, world-constants, boot-sequence, harness, asset-contract)
   - [methodology/docs/](<methodology/docs/>) — architecture
@@ -66,8 +67,8 @@ routing table's *Contents* column describes what a file holds permanently — ne
 | loading, loader, boot order, generation errors (TDZ), Esc/re-lock, slider steals the cursor | [methodology/contracts/boot-sequence.md](<methodology/contracts/boot-sequence.md>) | C-BOOT-1…5 — `boot()` step order, loader hides itself at 100 % |
 | traffic, cars, spawn, lanes, traffic multiplier | [methodology/contracts/traffic-lanes.md](<methodology/contracts/traffic-lanes.md>) | C-LANE-1…6 — `ROAD/4`, interior-line-only (cars **and** pedestrians), wrap, time scale |
 | crossings, right of way, pedestrian stuck, give-way priority | [methodology/contracts/right-of-way.md](<methodology/contracts/right-of-way.md>) | C-ROW-1…6 — positional priority, `bodyGap()` counts bodies ahead only, one shared `xs.list`, `clearance(P)` |
-| assets, models, canvas textures, palette/color, Three.js API, UV merge, moon billboard | [methodology/contracts/render-api.md](<methodology/contracts/render-api.md>) | C-API-1…6 — `CapsuleGeometry` polyfill, indices by `.length` |
-| character rig, head/arms, anatomy, procedural face | [methodology/contracts/character-anatomy.md](<methodology/contracts/character-anatomy.md>) | C-ANA-1…4 — head above torso, limb pivots |
+| assets, models, canvas textures, palette/color, Three.js API, UV merge, moon billboard | [methodology/contracts/render-api.md](<methodology/contracts/render-api.md>) | C-API-1…7 — `outputColorSpace`/`SRGBColorSpace`, no r128 leftovers, indices by `.length` |
+| character rig, head/arms, anatomy, eyes/blink | [methodology/contracts/character-anatomy.md](<methodology/contracts/character-anatomy.md>) | C-ANA-1…4 — head above torso, limb pivots, geometry face (no texture) |
 | asset contract, rig, pose, layers, behaviors, sockets, contacts, capabilities, four-legged, vehicles, props | [methodology/contracts/asset-contract.md](<methodology/contracts/asset-contract.md>) | C-ASSET-1…13 — metre units, flat pose, mirror pairs, phase continuity, layer toggle, requires.three |
 | ground collision, world bounds, road-line indexing, `±290` | [methodology/contracts/world-constants.md](<methodology/contracts/world-constants.md>) | C-WLD-1…4 — road-line indexing (the trap that cost two bug fixes); the `±290` asphalt deviation is accepted, not fixed |
 | where is that section of `game/gta.html`?, load order, seeded RNG | [methodology/docs/architecture.md](<methodology/docs/architecture.md>) | line-numbered code map — re-derived live, authoritative |
@@ -77,7 +78,7 @@ routing table's *Contents* column describes what a file holds permanently — ne
 | what next, open question, state at the last verified change | [methodology/handsoff.md](<methodology/handsoff.md>) | state cache + the one-line index of open questions |
 
 Every invariant carries an anchor you can cite from a comment (`// see methodology/contracts/camera.md#C-CAM-1`).
-`tools/lint-refs.sh` checks those citations and the router paths above, doc links inside methodology/, the pinned Three.js r128 API in `game/gta.html`, anchor format with documented prefixes, provenance labels on run metrics and numbered TODOs: exit 0 clean, 1 violated. Run it after editing contract headings, anchor comments or this table.
+`tools/lint-refs.sh` checks those citations and the router paths above, doc links inside methodology/, the pinned Three.js 0.160 API in `game/gta.html`, anchor format with documented prefixes, provenance labels on run metrics and numbered TODOs: exit 0 clean, 1 violated. Run it after editing contract headings, anchor comments or this table.
 
 Rules for changing a contract — amend rather than relax, keep numeric couplings, the seeded RNG is contractual:
 [methodology/contracts/README.md](<methodology/contracts/README.md>).

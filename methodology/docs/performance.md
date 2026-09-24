@@ -9,7 +9,7 @@ them. Line numbers drift — locate symbols with `grep -n` in the game file.
 - **Building** = 2 meshes: a shell with vertex colours plus one glazing mesh shared by a 2×2 block cluster —
   instead of ~12 per building.
 - **Vehicle** = 1 merged body mesh; wheels and headlight/lens pairs are shared `InstancedMesh`es across the whole
-  park (**46 bodies + 4 instanced meshes instead of ~90 boxes**).
+  park (**52 bodies + 4 instanced meshes instead of ~90 boxes**).
 - **Bus** = one merged mesh including windows and doors. **Semi** = cab + trailer merged, with double wheels
   collapsed into a single wide instance (`widthScale = 1.75`).
 

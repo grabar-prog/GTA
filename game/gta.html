@@ -481,7 +481,7 @@ function buildStreetlights(){
 /* ---------- cars ---------- */
 // Paint colours are baked into the merged body as vertex colours (one material for the whole fleet)
 // and wheels/lenses live in shared InstancedMeshes, so a far more detailed car is still cheap:
-// 46 bodies + 4 instanced meshes instead of ~90 boxes.
+// 52 bodies + 4 instanced meshes instead of ~90 boxes.
 const CAR_COLORS=[0xd23b3b,0x2f7fd1,0xe8e8ea,0x2c2f34,0xf0a526,0x3fae6a,0xb9c2cc,0x8a4bd0,0x1d2733,0xdfe6ee];
 const CAR_TRIM=0x15181d,CAR_GLASS=0x10171f,CAR_DARK=0x23282f,CAR_CHROME=0xa9b3bd,CAR_TYRE=0x141619;
 // Silhouettes instead of one repeated box. L/W in metres, h = body height above the floor pan,
@@ -923,7 +923,7 @@ addEventListener('keyup',e=>keys[e.code]=false);
 let trafficMult=1;
 const tmulEl=document.getElementById('tmul'),tsliderEl=document.getElementById('tslider');
 function setTrafficMult(m){
-  trafficMult=clamp(Math.round(m*20)/20,0,2.5);          // snap to quarter steps: slider and keys agree
+  trafficMult=clamp(Math.round(m*20)/20,0,2.5);          // snap to 0.05 steps: slider and keys agree
   if(tmulEl)tmulEl.textContent='×'+trafficMult.toFixed(2);
   if(tsliderEl){tsliderEl.value=Math.round(trafficMult*100);
                 tsliderEl.style.setProperty('--fill',(trafficMult/2.5*100).toFixed(1)+'%');}
