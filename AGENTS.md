@@ -16,7 +16,7 @@ Existing Russian  is **not translated opportunistically**: leave it as-is until 
 ## Repository layout
 
 - `game/` — playable substrate (`game/gta.html`). Playable without a build, Three.js from CDN.
-- `assets/` — procedural hero rig (`assets/main_person.js`, a classic `<script>`) and its pose workbench (`assets/main_person.html`). Loaded by `game/gta.html`.
+- `assets/` — procedural models loaded by `game/gta.html` as classic `<script>`s (`file://` blocks sibling ES-module imports): hero rig `main_person.js` (+ its pose workbench `main_person.html`), fleet `vehicles.js`, crowd `pedestrians.js`. Each exposes a `createFactory({ THREE, helpers, palettes })` entry point; palettes are load-time mutable.
 - Contracts: [methodology/contracts/](<methodology/contracts/>), architecture: [methodology/docs/](<methodology/docs/>).
   - [methodology/contracts/](<methodology/contracts/>) — invariants (camera, traffic-lanes, right-of-way, render-api, character-anatomy, world-constants, boot-sequence, harness, asset-contract)
   - [methodology/docs/](<methodology/docs/>) — architecture

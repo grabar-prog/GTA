@@ -34,7 +34,7 @@ Hero visual polish — the 6-item list in [contracts/character-anatomy.md](contr
 
 ## Watch out for
 
-- `game/gta.html` is the only **game** file. The hero rig is extracted to `assets/main_person.js` (loaded as a classic `<script>` because `file://` blocks sibling ES-module imports); its pose workbench `assets/main_person.html` sits beside it. No second game HTML/JS/CSS.
+- `game/gta.html` is the only **game** file. Three asset scripts sit beside it, all loaded as classic `<script>`s (`file://` blocks sibling ES-module imports): the hero rig `assets/main_person.js` (+ its pose workbench `assets/main_person.html`), the fleet `assets/vehicles.js`, the crowd `assets/pedestrians.js`. Each exposes `createFactory({ THREE, helpers, palettes })`; palettes are mutable at load time. No second game HTML/JS/CSS.
 - Three.js **0.160.x** via importmap. The r128 API — `outputEncoding`, `sRGBEncoding`, the `CapsuleGeometry` polyfill — is gone. See [contracts/render-api.md](contracts/render-api.md) C-API-1…7.
 - The abandoned "splice" workflow rebuilt the file from a backup snapshot and would silently revert direct edits. Do not resurrect it; edit in place.
 - Hero review shots need the portrait rig, which is **not in the repo** — rebuild it in the scratchpad. Procedure, camera-sign convention and the puppeteer serialization trap: [contracts/character-anatomy.md](contracts/character-anatomy.md) → *Verification*. Shots go to `%TEMP%\meridian-char\`, never into the repo (the city harness uses its own `%TEMP%\meridian-check\`).

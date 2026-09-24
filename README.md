@@ -24,6 +24,9 @@ City generation takes ~1–2 s on a GPU (~3.5–4 s under headless SwiftShader).
 game/gta.html            the whole game — one file, single source of truth
 assets/main_person.js    procedural hero rig (classic <script>, shared with the pose workbench)
 assets/main_person.html  pose workbench for the hero rig (not part of the city)
+assets/vehicles.js       fleet models: sedan / hatch / suv / pickup / van / bus / artbus / semi
+                         (palettes overridable at load — MeridianVehicles.PALETTES)
+assets/pedestrians.js    crowd rig: torso / head / arms / legs (MeridianPedestrians.PALETTES)
 harness/check-city.js    headless harness: loads the page, asserts 23 checks, prints JSON + screenshots
 methodology/contracts/   formal, testable behaviour specs (see methodology/contracts/README.md)
 methodology/docs/        architecture map · performance internals · limitations in detail
@@ -35,7 +38,7 @@ LICENSE                  MIT
 harness/package.json     dev-only dependency: puppeteer-core (for the harness)
 ```
 
-**One game file = one source of truth.** The city lives entirely in `game/gta.html`; the hero rig is the sole extracted asset (`assets/main_person.js`, a classic `<script>` loaded by `gta.html` because `file://` blocks sibling ES-module imports), with its pose workbench `assets/main_person.html` beside it. `harness/check-city.js` resolves `game/gta.html` relative to its own directory, so moving the HTML breaks it unless you pass the path as an argument.
+**One game file = one source of truth.** The city — layout, traffic simulation, camera, HUD — lives entirely in `game/gta.html`. Three asset scripts sit beside it and are loaded as classic `<script>`s (`file://` blocks sibling ES-module imports): the hero rig `assets/main_person.js` with its pose workbench `assets/main_person.html`, the fleet `assets/vehicles.js`, and the crowd `assets/pedestrians.js`. Each asset exposes a `createFactory({ THREE, helpers, palettes })`; palettes are mutable at load time. `harness/check-city.js` resolves `game/gta.html` relative to its own directory, so moving the HTML breaks it unless you pass the path as an argument.
 
 ## Verify it
 

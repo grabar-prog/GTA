@@ -142,21 +142,29 @@
 </div>
 
 <script>
-  // Watchdog: the module below imports Three.js through an importmap. If that
-  // importmap fails to resolve — offline, CDN blocked, no importmap support —
-  // none of the module code runs and the loader freezes with no message. This
-  // classic script is a one-shot net: after 4 s with the text still at its
-  // initial value, surface the failure where boot().catch() would have.
+  // Watchdog: the module below imports Three.js through an importmap and expects three classic
+  // <script src> siblings to have defined their globals. If any of those fails — offline, CDN
+  // blocked, no importmap support, a missing assets/*.js — none of the module code runs and the
+  // loader freezes with no message. This classic script is a one-shot net: after 4 s with the
+  // text still at its initial value, name whatever is actually missing, where boot().catch()
+  // would have.
   setTimeout(() => {
     const t = document.getElementById('ltxt');
-    if (t && t.textContent === 'Booting engine…') {
-      t.style.color = 'var(--red)';
-      t.textContent = 'Failed to load Three.js — check your connection / importmap.';
-    }
+    if (!t || t.textContent !== 'Booting engine…') return;
+    const missing = [];
+    if (!window.MainPerson)          missing.push('assets/main_person.js');
+    if (!window.MeridianVehicles)    missing.push('assets/vehicles.js');
+    if (!window.MeridianPedestrians) missing.push('assets/pedestrians.js');
+    t.style.color = 'var(--red)';
+    t.textContent = missing.length
+      ? 'Failed to load asset script(s): ' + missing.join(', ')
+      : 'Failed to load Three.js — check your connection / importmap.';
   }, 4000);
 </script>
 
 <script src="../assets/main_person.js"></script>
+<script src="../assets/vehicles.js"></script>
+<script src="../assets/pedestrians.js"></script>
 
 <script type="importmap">
 {
@@ -175,6 +183,14 @@ import * as THREE from 'three';
 // window.THREE and the document.write fallback are gone: an importmap miss is
 // a module-load failure, caught by the watchdog script above.
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// The classic <script> siblings above have already defined their globals. A missing one is a
+// module-load failure the watchdog names, but failing *here* is honest: the alternative is a
+// ReferenceError deep inside buildCars, with the loader stuck on "Spawning traffic…".
+if (typeof MeridianVehicles === 'undefined' || typeof MeridianPedestrians === 'undefined' ||
+    typeof MainPerson === 'undefined') {
+  throw new Error('asset scripts missing — expected MeridianVehicles, MeridianPedestrians, MainPerson');
+}
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -479,47 +495,18 @@ function buildStreetlights(){
 }
 
 /* ---------- cars ---------- */
-// Paint colours are baked into the merged body as vertex colours (one material for the whole fleet)
-// and wheels/lenses live in shared InstancedMeshes, so a far more detailed car is still cheap:
-// 52 bodies + 4 instanced meshes instead of ~90 boxes.
-const CAR_COLORS=[0xd23b3b,0x2f7fd1,0xe8e8ea,0x2c2f34,0xf0a526,0x3fae6a,0xb9c2cc,0x8a4bd0,0x1d2733,0xdfe6ee];
-const CAR_TRIM=0x15181d,CAR_GLASS=0x10171f,CAR_DARK=0x23282f,CAR_CHROME=0xa9b3bd,CAR_TYRE=0x141619;
-// Silhouettes instead of one repeated box. L/W in metres, h = body height above the floor pan,
-// cz/cl/ch/taper place and slant the greenhouse, wr is the wheel radius (also drives ground clearance).
-// `kind` selects the geometry builder + driving profile; `w` is its share of the fleet.
-const CAR_TYPES=[
-  {name:'sedan', kind:'car', w:.112,L:4.5,W:1.86,h:.62,cz:-.15,cl:2.0,ch:.5 ,taper:[.84,.70],wr:.35},
-  {name:'hatch', kind:'car', w:.112,L:3.9,W:1.80,h:.60,cz: .10,cl:1.9,ch:.54,taper:[.82,.58],wr:.32},
-  {name:'suv',   kind:'car', w:.112,L:4.7,W:1.98,h:.72,cz:-.05,cl:2.4,ch:.62,taper:[.90,.80],wr:.42,rails:true},
-  {name:'pickup',kind:'car', w:.112,L:5.2,W:1.98,h:.68,cz: .60,cl:1.7,ch:.58,taper:[.86,.80],wr:.42,bed:true},
-  {name:'van',   kind:'car', w:.112,L:5.0,W:2.00,h:.98,cz:-.10,cl:2.6,ch:.72,taper:[.93,.90],wr:.38}
-];
-// Buses: floorY/roofY are absolute heights over the asphalt, bandH is the glazing belt, doors sit on
-// one kerb side only (chosen per vehicle). `axles` = [zAlongBody, radius, widthScale] — widthScale >1
-// merges twin road wheels into one wide instance. artic splits the shell in two spans + a bellows.
-const BUS_TYPES=[
-  {name:'bus',   kind:'bus', w:.20,L:12.0,W:2.55,wr:.52,floorY:.75,roofY:3.10,bandH:1.35,
-   track:2.14,axles:[[ 3.4,.52,1],[-3.6,.52,1]]},
-  {name:'artbus',kind:'bus', w:.07,L:17.5,W:2.55,wr:.52,floorY:.75,roofY:3.10,bandH:1.35,artic:true,
-   track:2.14,axles:[[ 6.6,.52,1],[-1.4,.52,1],[-6.6,.52,1]]}
-];
-// Euro semi-trailer: day cab + curtain-sider box on a tandem bogie. trGap is the bumper-to-trailer-front
-// distance (cab depth + fifth wheel), so trailer length = L - trGap.
-const TRUCK_TYPES=[
-  {name:'semi',  kind:'semi',w:.17,L:16.4,W:2.55,wr:.55,cabL:2.8,trGap:3.3,trailerW:2.60,trFloor:1.42,trTop:4.00,
-   track:2.05,axles:[[ 6.4,.55,1],[ 2.5,.55,1.75],[-5.8,.52,1.75],[-6.9,.52,1.75]]}
-];
-const VEH_TYPES=[...CAR_TYPES,...BUS_TYPES,...TRUCK_TYPES];
-const VEH_W=VEH_TYPES.reduce((s,t)=>s+t.w,0);
-function pickVehicleType(){let r=rng()*VEH_W;for(const t of VEH_TYPES){r-=t.w;if(r<=0)return t;}return VEH_TYPES[VEH_TYPES.length-1];}
-// Long vehicles accelerate and stop like their mass says they should.
-const DRIVE={car:{cruise:[7,14],acc:4.2,dec:11},bus:{cruise:[6.5,10.5],acc:2.8,dec:8.5},semi:{cruise:[6,9],acc:2.1,dec:7}};
-const BUS_ROOF=0x9aa3bd,BUS_RIB=0xb4bcc6;   // AC housings / roof sheets, curtain buckles
-const CURTAINS=[0xd8dde3,0xe8e8ea,0x2f5f96,0xb03a34,0x3c7d54,0x8f9aa6];   // trailer curtain colours
-const BUS_STRIPES=[0xe8e8ea,0x2c2f34,0xf0a526,0x2f7fd1,0xd23b3b,0x4fae7a];
-// Cars derive their axle pair from the body length; long vehicles list theirs. Normalising once here
-// means everything downstream (instance counts, wheel writer) can assume both fields exist.
-for(const t of CAR_TYPES){t.track=t.W-.08;t.axles=[[ t.L*.3,t.wr,1],[-t.L*.3,t.wr,1]];}
+// Vehicle models live in assets/vehicles.js. The factory closes over the primitive-sugar helpers
+// (so gta.html remains the single source of boxAt / taperBox / cylX / cylZ) and over the palettes,
+// which a caller can swap at load time: mutate MeridianVehicles.PALETTES before createFactory(),
+// or pass { palettes } to it. Palette indices are taken modulo .length — render-api.md C-API-5.
+// Determinism: pickVehicleType(rng), the paint/tint picks below and the bus-door coin inside
+// makeVehicleGeometry(t, paint, tint, rng) all keep their original rng() positions — contracts/
+// README.md §4.
+const V = MeridianVehicles.createFactory({
+  THREE,
+  helpers: { mergeGeometries, boxAt, taperBox, cylX, cylZ },
+});
+const { CAR_TYPES, BUS_TYPES, TRUCK_TYPES, VEH_TYPES, VEH_W, DRIVE } = MeridianVehicles;
 const carBodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.34,metalness:.55});
 const wheelMat  =new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,metalness:.18});
 // Lenses are dark by day and light up with the rest of the city; brake lamps are a second instanced
@@ -531,159 +518,6 @@ let wheelMesh=null,headMesh=null,tailMesh=null,brakeMesh=null;
 const lanes=new Map();                       // lane key -> cars driving in it (used for the gap search)
 const laneKey=c=>c.axis+':'+c.lineIdx+':'+c.dir;
 
-// Body = underbody + tapered shell + greenhouse + roof plate + bumpers/grille/rockers/mirrors/handles,
-// everything merged into one vertex-coloured buffer. Forward is local +Z.
-function makeCarGeometry(t,paint){
-  const P=[],wr=t.wr,floor=wr*.95,belt=floor+t.h,top=belt+t.ch;
-  P.push(boxAt(t.W-.18,wr*.9,t.L-.34,0,floor-wr*.28,0,CAR_TRIM));            // underbody / axle shadow
-  P.push(taperBox(t.W,t.h,t.L,0,floor+t.h/2,0,.975,.94,paint));              // hood + doors + trunk
-  P.push(boxAt(.16,.2,t.L*.52, t.W/2-.02,belt-.14,0,CAR_TRIM));              // rocker panels
-  P.push(boxAt(.16,.2,t.L*.52,-t.W/2+.02,belt-.14,0,CAR_TRIM));
-  const gx=t.W*.94,sx=t.taper[0],sz=t.taper[1];
-  P.push(taperBox(gx,t.ch,t.cl,0,belt+t.ch/2-.02,t.cz,sx,sz,CAR_GLASS));     // greenhouse (glass)
-  P.push(boxAt(gx*sx+.05,.13,t.cl*sz+.05,0,top-.045,t.cz,paint));            // roof plate
-  P.push(boxAt(t.W+.05,wr*.6,.36,0,wr*1.0, t.L/2-.14,CAR_TRIM));             // bumpers
-  P.push(boxAt(t.W+.05,wr*.6,.36,0,wr*1.0,-t.L/2+.14,CAR_TRIM));
-  P.push(boxAt(t.W*.58,.14,.09,0,floor+t.h*.7,t.L/2+.02,CAR_DARK));          // grille
-  const mz=t.cz+t.cl*.46;
-  P.push(boxAt(.18,.11,.1, t.W/2+.1,belt+t.ch*.5,mz,CAR_TRIM));              // door mirrors
-  P.push(boxAt(.18,.11,.1,-t.W/2-.1,belt+t.ch*.5,mz,CAR_TRIM));
-  P.push(boxAt(.06,.07,.26, t.W/2+.03,floor+t.h*.72,t.cz-.12,CAR_CHROME));   // door handles
-  P.push(boxAt(.06,.07,.26,-t.W/2-.03,floor+t.h*.72,t.cz-.12,CAR_CHROME));
-  if(t.rails){const rx=gx*sx/2;P.push(boxAt(.08,.08,t.cl*sz*.9,rx,top+.05,t.cz,CAR_TRIM));
-              P.push(boxAt(.08,.08,t.cl*sz*.9,-rx,top+.05,t.cz,CAR_TRIM));}  // roof rails
-  if(t.bed){                                                                  // pickup cargo bed
-    const rear=-t.L/2+.18,front=t.cz-t.cl/2,bl=front-rear,bh=.46;
-    P.push(boxAt(t.W-.08,.1,bl,0,belt+.05,(rear+front)/2,CAR_DARK));         // bed floor
-    P.push(boxAt(.12,bh,bl, t.W/2-.06,belt+bh/2,(rear+front)/2,paint));
-    P.push(boxAt(.12,bh,bl,-t.W/2+.06,belt+bh/2,(rear+front)/2,paint));
-    P.push(boxAt(t.W-.08,bh,.12,0,belt+bh/2,rear+.06,paint));                // tailgate
-  }
-  return mergeGeometries(P);
-}
-/* ---------- long vehicles: city bus / articulated bus / euro semi-trailer ---------- */
-// Same trick as the cars — everything merges into ONE vertex-coloured buffer per vehicle, so a 17 m bus
-// costs exactly one draw call more than a hatchback. Forward is local +Z in every builder below.
-function makeVehicleGeometry(t,paint,tint){
-  if(t.kind==='bus')return makeBusGeometry(t,paint,tint,rng()<.5?1:-1);
-  if(t.kind==='semi')return makeSemiGeometry(t,paint,tint);
-  return makeCarGeometry(t,paint);
-}
-// Bus = skirt + tapered shell + full-width glazing belt, then pillars, kerbside doors and a roof kit.
-// `artic` cuts the shell into two spans joined by an accordion bellows: traffic here never steers (lanes
-// are straight), so one rigid mesh reads exactly like a real articulation joint.
-function makeBusGeometry(t,paint,stripe,doorSide){
-  const P=[],W=t.W,L=t.L,y0=t.floorY,y1=t.roofY,h=y1-y0;
-  const bandY=y1-.2-t.bandH/2;                 // glazing belt centre → windows in the upper half
-  const doorTop=y1-.35,doorBot=.95,dh=doorTop-doorBot;
-  const span=(z0,z1,doors,roofKit)=>{
-    const l=z1-z0,cz=(z0+z1)/2,fz=z1,rz=z0;
-    P.push(boxAt(W-.5,.34,l-.1,0,y0-.2,cz,CAR_TRIM));                    // skirt between the axles
-    P.push(taperBox(W,h,l-.12,0,y0+h/2,cz,.985,.99,paint));              // shell
-    P.push(boxAt(W+.06,t.bandH,l-1.3,0,bandY,cz,CAR_GLASS));             // glazing belt all round
-    P.push(boxAt(W+.07,.2,l-1.4,0,bandY-t.bandH/2-.12,cz,stripe));       // livery stripe
-    for(let z=rz+1.0;z<fz-.8;z+=2.3){                                    // window pillars
-      const atDoor=doors.some(zd=>Math.abs(z-zd)<.95);
-      if(!atDoor||doorSide<0)P.push(boxAt(.11,t.bandH+.08,.13, W/2+.05,bandY,z,CAR_TRIM));
-      if(!atDoor||doorSide>0)P.push(boxAt(.11,t.bandH+.08,.13,-W/2-.05,bandY,z,CAR_TRIM));
-    }
-    for(const zd of doors){                                              // double-leaf glazed door
-      const dx=doorSide*(W/2+.06);
-      P.push(boxAt(.09,dh,1.24,dx,(doorTop+doorBot)/2,zd,CAR_GLASS));
-      P.push(boxAt(.11,dh+.1,.09,dx,(doorTop+doorBot)/2,zd-.63,CAR_TRIM));
-      P.push(boxAt(.11,dh+.1,.09,dx,(doorTop+doorBot)/2,zd+.63,CAR_TRIM));
-      P.push(boxAt(.11,.1,1.34,dx,doorBot,zd,CAR_TRIM));
-    }
-    if(roofKit){                                                         // AC unit + fan intake
-      P.push(boxAt(2.05,.3,l*.42,0,y1+.14,cz-l*.06,BUS_ROOF));
-      P.push(cylZ(.34,.7,0,y1+.2,cz+l*.26,12,CAR_DARK));
-    }
-    P.push(boxAt(.1,.1,l-.3, W/2-.16,y1+.02,cz,CAR_TRIM));               // roof edge trims
-    P.push(boxAt(.1,.1,l-.3,-W/2+.16,y1+.02,cz,CAR_TRIM));
-  };
-  if(t.artic){
-    const joint=-1.4,bel=1.2;
-    span(joint,L/2,[L/2-2.3,1.0],true);
-    span(-L/2,joint-bel,[-4.6],false);
-    const zc=joint-bel/2;                                                // accordion bellows
-    P.push(boxAt(W-.55,h-.35,bel+.06,0,y0+(h-.35)/2,zc,CAR_DARK));
-    for(let i=0;i<4;i++)P.push(boxAt(W-.3,h-.16,.1,0,y0+(h-.16)/2,zc-bel/2+.18+i*(bel-.36)/3,BUS_RIB));
-  }else{
-    span(-L/2,L/2,[L/2-2.2,-.4],true);
-  }
-  const fz=L/2,rz=-L/2;
-  P.push(boxAt(W-.5,1.45,.12,0,y1-1.05,fz+.03,CAR_GLASS));               // windscreen
-  P.push(boxAt(W-1.15,.34,.1,0,y1-.42,fz+.05,0x14181d));                 // destination display
-  P.push(boxAt(W+.02,.36,.3,0,.56,fz-.05,CAR_TRIM));                     // bumpers
-  P.push(boxAt(W+.02,.36,.3,0,.56,rz+.05,CAR_TRIM));
-  P.push(boxAt(W-.7,.95,.1,0,1.45,rz-.03,CAR_DARK));                     // rear engine panel
-  for(let i=0;i<3;i++)P.push(boxAt(W-1.0,.06,.06,0,1.15+i*.22,rz-.07,CAR_CHROME));   // louvres
-  return mergeGeometries(P);
-}
-// Euro semi-trailer: day cab with a high sleeper roof, tanks and an exhaust stack behind the door, plus a
-// curtain-sided box (vertical buckles, rear doors with locking bars) on a tandem bogie.
-function makeSemiGeometry(t,paint,curt){
-  const P=[],W=t.W,L=t.L,fz=L/2;
-  const cabF=fz,cabR=fz-t.cabL,cabBot=1.15,cabTop=3.60;
-  const trZ1=fz-t.trGap,trZ0=-fz,trL=trZ1-trZ0,trC=(trZ0+trZ1)/2,tw=t.trailerW;
-  const boxH=t.trTop-t.trFloor,boxC=(t.trTop+t.trFloor)/2;
-  // chassis rails run from behind the front bumper all the way to the rear of the trailer
-  const railF=fz-1.6,railR=trZ0;
-  P.push(boxAt(1.3,.2,railF-railR,0,1.0,(railF+railR)/2,CAR_TRIM));
-  // ---- tractor ----
-  P.push(taperBox(W,cabTop-cabBot,t.cabL-.06,0,(cabBot+cabTop)/2,(cabF+cabR)/2+.03,.97,.98,paint));
-  P.push(boxAt(W-.04,.4,t.cabL*.75,0,cabTop+.2,cabR+t.cabL*.375,paint)); // high-roof sleeper: tops out
-  P.push(boxAt(tw,.1,trL+.1,0,t.trTop+.06,trC,BUS_ROOF));                 // level with the trailer roof
-  P.push(boxAt(W-.45,1.45,.12,0,cabTop-1.05,cabF+.03,CAR_GLASS));         // windscreen
-  P.push(boxAt(W-.2,.2,.3,0,cabTop+.02,cabF+.06,CAR_TRIM));               // sun visor
-  for(const sx of [1,-1])P.push(boxAt(.12,.95,1.45,sx*(W/2+.04),cabTop-1.1,cabR+.85,CAR_GLASS));
-  P.push(cylZ(.3,1.2, .78,.92,4.3,14,CAR_CHROME));                        // fuel tanks between axles
-  P.push(cylZ(.3,1.2,-.78,.92,4.3,14,CAR_CHROME));
-  P.push(boxAt(1.9,.12,2.0,0,1.16,trZ1-1.6,CAR_DARK));                    // fifth wheel plate
-  P.push({geo:new THREE.CylinderGeometry(.09,.11,1.7,10).translate(W/2-.25,2.05,cabR-.3),color:CAR_CHROME});
-  for(const sx of [1,-1])for(const dz of [-.62,.62])                        // cab roof marker lamps
-    P.push(boxAt(.16,.12,.1,sx*(W/2-.25),cabTop+.06,cabF-dz,0xd9a94a));
-  // ---- curtain-sided trailer ----
-  P.push(boxAt(1.9,.26,trL+.1,0,t.trFloor-.14,trC,CAR_TRIM));             // trailer frame beam
-  P.push(taperBox(tw,boxH,trL-.15,0,boxC,trC,.998,.998,curt));            // curtain box
-  for(let z=trZ0+1.2;z<trZ1-1.0;z+=1.1){                                  // curtain buckles
-    P.push(boxAt(.07,boxH-.1,.1, tw/2+.05,boxC,z,BUS_RIB));
-    P.push(boxAt(.07,boxH-.1,.1,-tw/2-.05,boxC,z,BUS_RIB));
-  }
-  for(const sy of [t.trFloor+.16,t.trTop-.16]){                           // side rails
-    P.push(boxAt(.09,.16,trL-.1, tw/2+.04,sy,trC,CAR_TRIM));
-    P.push(boxAt(.09,.16,trL-.1,-tw/2-.04,sy,trC,CAR_TRIM));
-  }
-  const rdz=trZ0-.05;                                                     // rear doors
-  P.push(boxAt(tw-.08,boxH-.12,.1,0,boxC,rdz,curt));
-  for(const dx of [-.62,.62])P.push(boxAt(.07,boxH-.24,.09,dx,boxC,rdz-.07,CAR_CHROME));
-  for(const sx of [1,-1])P.push(boxAt(.14,boxH,.16,sx*(tw/2-.07),boxC,rdz,CAR_TRIM));
-  P.push(boxAt(tw-.5,.16,.34,0,.62,trZ0-.28,CAR_TRIM));                   // underrun guard
-  for(const sx of [1,-1])P.push(boxAt(.14,.5,.14,sx*(tw/2-.3),.9,trZ0-.16,CAR_TRIM));
-  P.push(boxAt(tw-.2,.07,2.6,0,1.18,-6.35,CAR_TRIM));                     // bogie mudguard
-  return mergeGeometries(P);
-}
-// Unit wheel (radius 1) so every tyre size in the fleet can share ONE InstancedMesh via instance scale.
-function makeWheelGeometry(){
-  const r=1,w=r*.62;
-  return mergeGeometries([cylX(r,w,0,0,0,20,CAR_TYRE),cylX(.64,w+.03,0,0,0,16,CAR_CHROME),cylX(.2,w+.06,0,0,0,10,0x5d666f)]);
-}
-const lensGeo=new THREE.BoxGeometry(.34,.15,.12);
-
-// Head/tail lamp mounts + lens size per body family: a bus lights the corners of its skirt, a semi
-// puts the tail cluster high on the trailer doors, not on the tractor.
-function lightLayout(t){
-  if(t.kind==='bus')return {s:1.3,
-    heads:[[ t.W/2-.4,.95,t.L/2+.02],[-t.W/2+.4,.95,t.L/2+.02]],
-    tails:[[ t.W/2-.4,1.5,-t.L/2-.02],[-t.W/2+.4,1.5,-t.L/2-.02]]};
-  if(t.kind==='semi')return {s:1.15,
-    heads:[[ t.W/2-.4,1.05,t.L/2+.02],[-t.W/2+.4,1.05,t.L/2+.02]],
-    tails:[[ t.trailerW/2-.3,1.6,-t.L/2-.08],[-t.trailerW/2+.3,1.6,-t.L/2-.08]]};
-  const ly=t.wr*.95+t.h-t.h*.26;
-  return {s:1,
-    heads:[[ t.W/2-.34,ly,t.L/2-.04],[-t.W/2+.34,ly,t.L/2-.04]],
-    tails:[[ t.W/2-.34,ly,-t.L/2+.04],[-t.W/2+.34,ly,-t.L/2+.04]]};
-}
 // Shortest distance between two spawn slots on a lane that wraps around the map.
 function wrapGap(a,b){const d=Math.abs(a-b)%TRACK;return Math.min(d,TRACK-d);}
 // Push a travel coordinate out of every crossing box on its lane. A vehicle that starts with its nose
@@ -706,7 +540,7 @@ function buildCars(){
   // lane ahead", because the periodic gap to that car is nearly a full lap).
   const plan=[],slot=new Map();
   for(let i=0;i<N;i++){
-    const t=pickVehicleType();
+    const t=V.pickVehicleType(rng);
     const lane=Math.floor(rng()*4); // 0..3 -> axis & dir
     const axis=lane<2?0:1, dir=(lane%2===0)?1:-1;
     // Interior road lines only (1…GRID-1), same rule as buildPeds(): line 0 and GRID sit exactly on the
@@ -726,18 +560,19 @@ function buildCars(){
   // bus on three, so a fixed N*4 would silently overflow (extra instances stay parked at the origin).
   let nWheel=0,nLens=0;
   for(const v of plan){nWheel+=v.t.axles.length*2;nLens+=2;}
-  wheelMesh=new THREE.InstancedMesh(makeWheelGeometry(),wheelMat,nWheel);wheelMesh.castShadow=true;
-  headMesh =new THREE.InstancedMesh(lensGeo,headMat,nLens);
-  tailMesh =new THREE.InstancedMesh(lensGeo,tailMat,nLens);
+  wheelMesh=new THREE.InstancedMesh(V.makeWheelGeometry(),wheelMat,nWheel);wheelMesh.castShadow=true;
+  headMesh =new THREE.InstancedMesh(V.LENS_GEO,headMat,nLens);
+  tailMesh =new THREE.InstancedMesh(V.LENS_GEO,tailMat,nLens);
   brakeMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.4,.21,.09),brakeMat,nLens);
   // Instances are spread over the whole map, so the geometry-derived bounding sphere is useless.
   for(const m of [wheelMesh,headMesh,tailMesh,brakeMesh]){m.frustumCulled=false;scene.add(m);}
 
   // ---- pass 3: one merged body per vehicle + its driving state
   for(const v of plan){
-    const t=v.t,paint=CAR_COLORS[(rng()*CAR_COLORS.length)|0];
-    const tint=t.kind==='bus'?BUS_STRIPES[(rng()*BUS_STRIPES.length)|0]
-             :t.kind==='semi'?CURTAINS[(rng()*CURTAINS.length)|0]:paint;
+    const t=v.t,PAL=V.palettes;
+    const paint=PAL.car[(rng()*PAL.car.length)|0];
+    const tint=t.kind==='bus'?PAL.stripe[(rng()*PAL.stripe.length)|0]
+             :t.kind==='semi'?PAL.curtain[(rng()*PAL.curtain.length)|0]:paint;
     const off=v.dir*ROAD/4; // lane offset from centerline
     let x,z,vx=0,vz=0;
     if(v.axis===0){x=-HALF+v.lineIdx*CELL+off;z=v.along;vz=v.dir;}
@@ -745,10 +580,10 @@ function buildCars(){
     // Forward is local +Z, so yaw must come from the travel vector. The old table (yaw=PI for dir>0
     // on the z-axis) pointed every car against its motion — invisible with two boxes, obvious now.
     const yaw=Math.atan2(vx,vz);
-    const mesh=new THREE.Mesh(makeVehicleGeometry(t,paint,tint),carBodyMat);
+    const mesh=new THREE.Mesh(V.makeVehicleGeometry(t,paint,tint,rng),carBodyMat);
     mesh.castShadow=true;mesh.position.set(x,0,z);mesh.rotation.y=yaw;scene.add(mesh);
 
-    const dr=DRIVE[t.kind],ll=lightLayout(t),cruise=rand(dr.cruise[0],dr.cruise[1]);
+    const dr=DRIVE[t.kind],ll=V.lightLayout(t),cruise=rand(dr.cruise[0],dr.cruise[1]);
     // id is fixed at build time and never reused: it is the last tie-break of a crossing, the one that
     // lets four cars arriving together elect a single leader without two drivers disagreeing twice.
     const c={id:cars.length,x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
@@ -759,47 +594,30 @@ function buildCars(){
       // square we are engaged with, xGo = its verdict. stall/unstick/revDist are timers — patience at a
       // held line, seconds wedged inside a box, metres already given way while reversing out.
       lead:null,xs:null,xGo:true,stall:0,unstick:0,reverse:0,revDist:0,
-      wheels:vehicleWheels(t),heads:ll.heads,tails:ll.tails};
+      wheels:V.vehicleWheels(t),heads:ll.heads,tails:ll.tails};
     cars.push(c);
     const g=lanes.get(laneKey(c))||lanes.set(laneKey(c),[]).get(laneKey(c));g.push(c);
   }
 }
-// Wheel instances are [x, z, radius, widthScale] — mirrored to both sides of the vehicle.
-function vehicleWheels(t){
-  const half=t.track/2,out=[];
-  for(const [z,r,w] of t.axles){out.push([ half,z,r,w]);out.push([-half,z,r,w]);}
-  return out;
-}
-
 /* ---------- pedestrians: one InstancedMesh per rig part (torso/head/2 arms/2 legs) ---------- */
-const PED_COLORS=[0x3a6ea5,0xd94f4f,0xe8b23a,0x4fae7a,0xb06ad0,0xe0e0e0,0x2c2f34,0xd98a3a];
-const PED_SKIN=[0xd9a878,0xc98d5e,0x8d5a3b,0xf0c9a5];
-// Pivot heights of a ~1.8 m walker. Limbs are modelled hanging from their own pivot so one Rx()
-// swings them; the previous rig had no arms at all and hung the legs off the shoulder line.
-// `head` is the world Y of the head sphere centre (geometry is built around its own origin).
-const PED_RIG={hip:.84,shoulder:1.32,head:1.58,hipX:.14,shX:.29};
+// Models and palettes live in assets/pedestrians.js; RIG lands there too and is re-exported here
+// under its original name so updatePeds / limbInstance keep reading it untouched. Spawn RNG order
+// is unchanged: the shirt/skin picks stay inside the per-walker loop below, one draw each, in the
+// same position they occupied before (contracts/README.md §4).
+const PED = MeridianPedestrians.createFactory({
+  THREE,
+  helpers: { mergeGeometries },
+});
+const PED_RIG = MeridianPedestrians.RIG;
 const PED_LIMIT=HALF-6;   // walkers turn around here — the ground plane itself ends at ±HALF
+let pedRig=null;          // { torso, head, armL, armR, legL, legR, setColors, commitColors }
 let pedTorso=null,pedHead=null,pedArmL=null,pedArmR=null,pedLegL=null,pedLegR=null;
 function buildPeds(){
   const N=54;
-  // Root = hips. The capsule tops out at y=1.47 so the head (centre 1.58, r .21) sticks out above it.
-  // It used to be (.26,.5)+translate .39 → top 1.78, exactly the crown of the head: the sphere sat
-  // *inside* the torso and every walker rendered headless.
-  const torso=new THREE.CapsuleGeometry(.27,.36,4,12);torso.translate(0,.18,0);
-  const head=new THREE.SphereGeometry(.21,12,10);   // centred on its origin → instance Y is the head centre
-  const leg=mergeGeometries([{geo:new THREE.CapsuleGeometry(.13,.5,4,8).translate(0,-.37,0),color:0x2b313c},
-                             {geo:new THREE.BoxGeometry(.2,.13,.36).translate(0,-.75,.07),color:0x1a1d22}]);
-  const arm=new THREE.CapsuleGeometry(.1,.42,4,8);arm.translate(0,-.31,0);
-
-  const shirtMat=new THREE.MeshStandardMaterial({roughness:.86});   // tinted per instance
-  const skinMat =new THREE.MeshStandardMaterial({roughness:.8});    // tinted per instance
-  const clothMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95});
-  pedTorso=new THREE.InstancedMesh(torso,shirtMat,N);pedArmL=new THREE.InstancedMesh(arm,shirtMat,N);
-  pedArmR =new THREE.InstancedMesh(arm,shirtMat,N); pedHead=new THREE.InstancedMesh(head,skinMat,N);
-  pedLegL =new THREE.InstancedMesh(leg,clothMat,N); pedLegR=new THREE.InstancedMesh(leg,clothMat,N);
-  for(const m of [pedTorso,pedArmL,pedArmR,pedHead,pedLegL,pedLegR]){m.castShadow=true;m.frustumCulled=false;scene.add(m);}
-
-  const col=new THREE.Color();
+  pedRig=PED.createRig(scene,N);
+  pedTorso=pedRig.torso;pedHead=pedRig.head;pedArmL=pedRig.armL;pedArmR=pedRig.armR;
+  pedLegL=pedRig.legL;pedLegR=pedRig.legR;
+  const PAL=PED.palettes;
   for(let i=0;i<N;i++){
     // Interior road lines only (1…GRID-1): line 0 and line GRID lie exactly on the border of the ground
     // plane, so a walker put there started out standing in the void outside the map.
@@ -808,15 +626,12 @@ function buildPeds(){
     const dir=rng()<.5?1:-1;                   // ±1 along the lane, reversed at the map border
     let x,z,yaw;
     if(axis===0){x=-HALF+lineIdx*CELL+side;z=along;yaw=dir>0?0:Math.PI;}else{z=-HALF+lineIdx*CELL-side;x=along;yaw=dir>0?Math.PI/2:-Math.PI/2;}
-    const shirt=PED_COLORS[(rng()*PED_COLORS.length)|0],skin=PED_SKIN[(rng()*PED_SKIN.length)|0];
-    pedTorso.setColorAt(i,col.set(shirt));pedArmL.setColorAt(i,col);pedArmR.setColorAt(i,col);
-    pedHead.setColorAt(i,col.set(skin));
+    const shirt=PAL.shirt[(rng()*PAL.shirt.length)|0],skin=PAL.skin[(rng()*PAL.skin.length)|0];
+    pedRig.setColors(i,shirt,skin);
     peds.push({x,z,yaw,axis,dir,speed:rand(1.1,1.9),phase:rng()*6.28,vx:0,vz:0});   // vx/vz = bump impulse
   }
-  for(const m of [pedTorso,pedArmL,pedArmR,pedHead]){if(m.instanceColor)m.instanceColor.needsUpdate=true;}
+  pedRig.commitColors();
 }
-
-
 
 // The hero: a physics body plus the rig that draws him (built at the bottom of this section).
 
@@ -1494,6 +1309,8 @@ boot().catch(err=>{
 Object.assign(window, {
   // Data — the harness mutates through the same references
   cars, buildings, trees, lampLightPool, player,
+  // Asset factory instances (see the guard at the top of the module) + their namespaces
+  V, PED, MeridianVehicles, MeridianPedestrians,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
   // Frame drivers — the sim block steps the game without the rAF loop
