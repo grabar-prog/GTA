@@ -47,6 +47,18 @@
     display:grid;place-items:center;padding:0 7px;box-shadow:0 2px 0 rgba(0,0,0,.3)}
   .lbl{font-weight:600;letter-spacing:.18em;font-size:10.5px;color:var(--muted);text-transform:uppercase}
 
+  /* ---------- traffic speed multiplier ---------- */
+  /* The only interactive part of the HUD, so it opts back into pointer events (#hud is click-through). */
+  #traffic{position:absolute;left:22px;bottom:104px;width:238px;padding:13px 16px 14px;border-radius:13px;pointer-events:auto}
+  #traffic .trow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:9px}
+  #tmul{font-family:'Anton',sans-serif;font-size:19px;line-height:1;color:var(--amber);letter-spacing:.04em}
+  #tslider{-webkit-appearance:none;appearance:none;display:block;width:100%;height:5px;border-radius:3px;cursor:pointer;
+    background:linear-gradient(90deg,var(--cyan) 0%,var(--cyan) var(--fill,40%),rgba(255,255,255,.12) var(--fill,40%))}
+  #tslider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;
+    border:3px solid var(--amber);box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #tslider::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--amber)}
+  #traffic .thint{margin-top:10px;display:flex;gap:6px;align-items:center}
+
   #mapwrap{position:absolute;right:22px;bottom:22px;padding:9px;border-radius:13px}
   #minimap{display:block;width:184px;height:184px;border-radius:7px;background:#0a121c}
 
@@ -83,7 +95,7 @@
   .bar{width:min(320px,70vw);height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
   .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--amber));transition:width .4s ease}
 
-  @media (max-width:760px){#controls,#mapwrap{display:none}}
+  @media (max-width:760px){#controls,#traffic,#mapwrap{display:none}}
 </style>
 </head>
 <body>
@@ -104,12 +116,18 @@
     <div class="ctl"><div class="keys"><kbd>Mouse</kbd></div><span class="lbl">Look</span></div>
   </div>
 
+  <div id="traffic" class="panel">
+    <div class="trow"><span class="lbl">Traffic speed</span><span id="tmul">×1.00</span></div>
+    <input id="tslider" type="range" min="0" max="250" step="5" value="100" aria-label="Traffic speed multiplier">
+    <div class="thint"><kbd>-</kbd><kbd>=</kbd><span class="lbl">step</span><kbd>0</kbd><span class="lbl">reset</span></div>
+  </div>
+
   <div id="mapwrap" class="panel"><canvas id="minimap"></canvas></div>
 </div>
 
 <div id="start">
   <div class="intro">
-    <div class="eyebrow">THREE.JS · R128 · ZERO ASSETS</div>
+    <div class="eyebrow">THREE.JS · 0.160 · ZERO ASSETS</div>
     <h2>MERIDIAN<em>CITY</em></h2>
     <p class="lede">A living grid of towers, traffic and crowds — every window, tree and streetlight generated from code. Walk the streets by day, watch them ignite at dusk.</p>
     <div class="cta"><button id="enter">Enter the City</button><span class="hint">Click to lock mouse · <b>WASD</b> walk · <b>Shift</b> sprint</span></div>
@@ -123,17 +141,37 @@
   <div class="ltxt" id="ltxt">Booting engine…</div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>window.THREE||document.write('<script src="https://unpkg.com/three@0.128.0/build/three.min.js"><\/script>');</script>
 <script>
-/* ============================================================
-   MERIDIAN CITY — procedural city sandbox (Three.js r128)
-   ============================================================ */
-const THREE = window.THREE;
-if(!THREE){
-  document.getElementById('ltxt').textContent='Failed to load Three.js — check your connection / disable tracking protection.';
-  throw new Error('Three.js failed to load from the CDN.');   // stop here: everything below needs THREE
+  // Watchdog: the module below imports Three.js through an importmap. If that
+  // importmap fails to resolve — offline, CDN blocked, no importmap support —
+  // none of the module code runs and the loader freezes with no message. This
+  // classic script is a one-shot net: after 4 s with the text still at its
+  // initial value, surface the failure where boot().catch() would have.
+  setTimeout(() => {
+    const t = document.getElementById('ltxt');
+    if (t && t.textContent === 'Booting engine…') {
+      t.style.color = 'var(--red)';
+      t.textContent = 'Failed to load Three.js — check your connection / importmap.';
+    }
+  }, 4000);
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
 }
+</script>
+
+<script type="module">
+/* ============================================================
+   MERIDIAN CITY — procedural city sandbox (Three.js 0.160)
+   ============================================================ */
+import * as THREE from 'three';
+// window.THREE and the document.write fallback are gone: an importmap miss is
+// a module-load failure, caught by the watchdog script above.
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -143,7 +181,7 @@ const rng=mulberry32(20240607);
 const rand=(a,b)=>a+(b-a)*rng();
 function pick(arr){return arr[(rng()*arr.length)|0];}   // <-- was missing, caused the crash
 
-/* ---------- r128-safe geometry helpers (no BufferGeometryUtils in this build) ---------- */
+/* ---------- geometry helpers (no BufferGeometryUtils in this build) ---------- */
 const _WHITE=new THREE.Color(1,1,1);
 // Merge a list of geometries — or [{geo,color},…] for vertex-coloured parts — into one buffer.
 // UVs are carried through whenever every part has them; without uv the emissive window map on the
@@ -171,23 +209,6 @@ function mergeGeometries(parts){
   if(anyColor)out.setAttribute('color',new THREE.BufferAttribute(col,3));
   return out;
 }
-// THREE.CapsuleGeometry only shipped in r140; without this polyfill every pedestrian/limb
-// construction throws "THREE.CapsuleGeometry is not a constructor" and the boot never finishes.
-if(!THREE.CapsuleGeometry){
-  THREE.CapsuleGeometry=class CapsuleGeometry extends THREE.BufferGeometry{
-    constructor(radius=1,length=1,capSegments=4,radialSegments=8){
-      super();
-      const rs=Math.max(3,radialSegments|0),cs=Math.max(1,capSegments|0);
-      const mid=new THREE.CylinderGeometry(radius,radius,length,rs,1,true);
-      const top=new THREE.SphereGeometry(radius,rs,cs,0,Math.PI*2,0,Math.PI/2);top.translate(0,length/2,0);
-      const bot=new THREE.SphereGeometry(radius,rs,cs,0,Math.PI*2,Math.PI/2,Math.PI/2);bot.translate(0,-length/2,0);
-      const m=mergeGeometries([mid,top,bot]);
-      this.setAttribute('position',m.getAttribute('position'));
-      this.setAttribute('normal',m.getAttribute('normal'));
-      if(m.attributes.uv)this.setAttribute('uv',m.getAttribute('uv'));
-    }
-  };
-}
 
 /* ---------- geometry sugar (keeps the builders below readable) ---------- */
 // Parts are handed to mergeGeometries() either as plain geometries or as {geo,color} pairs and always
@@ -202,6 +223,14 @@ function taperBox(w,h,d,x,y,z,sx,sz,color){
 // Cylinder lying on its side (axis = X). A wheel built this way rolls with a plain Rx(spin).
 function cylX(r,h,x,y,z,seg,color){const g=new THREE.CylinderGeometry(r,r,h,seg||18);g.rotateZ(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
 // Same cylinder along Z — used for lorry fuel tanks and bus AC fans.
+// Ellipsoid/capsule sugar for the hand-modelled hero — same {geo,color} pairs mergeGeometries eats.
+function sphAt(rx,ry,rz,x,y,z,color,seg){const s=seg||14;const g=new THREE.SphereGeometry(1,s,s-4);g.scale(rx,ry,rz);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+function capY(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+function capX(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.rotateZ(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+function capZ(r,l,x,y,z,color){const g=new THREE.CapsuleGeometry(r,l,4,12);g.rotateX(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+function cylY(r,h,x,y,z,color){const g=new THREE.CylinderGeometry(r,r,h,14);g.translate(x,y,z);return color==null?g:{geo:g,color};}
+// Box rotated about Y first — lapels, collars and other flat flaps that must sit at an angle.
+function ebox(w,h,d,x,y,z,ry,color){const g=new THREE.BoxGeometry(w,h,d);if(ry)g.rotateY(ry);g.translate(x,y,z);return color==null?g:{geo:g,color};}
 function cylZ(r,h,x,y,z,seg,color){const g=new THREE.CylinderGeometry(r,r,h,seg||14);g.rotateX(Math.PI/2);g.translate(x,y,z);return color==null?g:{geo:g,color};}
 
 /* ---------- constants ---------- */
@@ -229,7 +258,11 @@ function initRenderer(){
   renderer.setSize(innerWidth,innerHeight);
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  // r155 changed the light default; keep r128-calibrated sun/hemi/moon intensities
+  // until the city is re-tuned. Deprecated in r165, still present in 0.160.x.
+  // TODO(s27): drop useLegacyLights and recalibrate sun/hemi/moon/lamp intensities.
+  renderer.useLegacyLights=true;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.05;
   document.body.appendChild(renderer.domElement);
@@ -268,7 +301,7 @@ function makeFacadeTexture(){
     x.fillStyle=g;x.fillRect(wx,wy,ww,wh);
     x.strokeStyle='rgba(255,255,255,.06)';x.beginPath();x.moveTo(wx+ww/2,wy);x.lineTo(wx+ww/2,wy+wh);x.stroke();
   }
-  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.encoding=THREE.sRGBEncoding;return t;
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 function makeWindowEmissive(){
   const c=document.createElement('canvas');c.width=128;c.height=256;const x=c.getContext('2d');
@@ -278,7 +311,7 @@ function makeWindowEmissive(){
     const wx=gx*32+7,wy=gy*16+4,ww=18,wh=9;
     x.fillStyle=`rgba(255,${(190+rng()*45)|0},${(120+rng()*70)|0},1)`;x.fillRect(wx,wy,ww,wh);
   }
-  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.encoding=THREE.sRGBEncoding;return t;
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 function makeGroundTexture(){
   const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');
@@ -289,7 +322,7 @@ function makeGroundTexture(){
   const dash=(a,b,c2,d)=>{x.strokeStyle='rgba(238,216,150,.7)';x.lineWidth=2;x.setLineDash([9,11]);x.beginPath();x.moveTo(a,b);x.lineTo(c2,d);x.stroke();};
   for(let i=0;i<=GRID;i++){const p=i*cellPx;dash(p,0,p,1024);dash(0,p,1024,p);}
   x.setLineDash([]);
-  const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=8;return t;
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;
 }
 
 /* ---------- shared materials / geometry ---------- */
@@ -650,6 +683,18 @@ function lightLayout(t){
 }
 // Shortest distance between two spawn slots on a lane that wraps around the map.
 function wrapGap(a,b){const d=Math.abs(a-b)%TRACK;return Math.min(d,TRACK-d);}
+// Push a travel coordinate out of every crossing box on its lane. A vehicle that starts with its nose
+// inside the shared square is *committed* by the right-of-way rule (it must not stop in the junction),
+// so two of them at one box — which plain random placement happily produces — drive into each other,
+// jam sideways and freeze every approach to that crossing for the rest of the session. BOX/modm/TRACK
+// are declared further down with the traffic code; like wrapGap() this only ever runs from boot().
+function inBox(along,hl){const d=modm(along+HALF,CELL);return d<BOX+hl+2||d>CELL-BOX-hl-2;}
+function clearOfBox(along,hl){
+  const m=BOX+hl+2;                        // body plus a metre or two to be visibly outside the box
+  let d=modm(along+HALF,CELL);             // distance back to the previous road line on this lane
+  if(d<m)along+=m-d;else if(d>CELL-m)along-=d-(CELL-m);
+  return modm(along+HALF,TRACK)-HALF;      // keep it inside ±HALF (the wrap boundary)
+}
 
 function buildCars(){
   const N=52;
@@ -668,7 +713,8 @@ function buildCars(){
     const lineIdx=1+Math.floor(rng()*(GRID-1));
     const key=axis+':'+lineIdx+':'+dir,taken=slot.get(key)||slot.set(key,[]).get(key);
     let along=rand(-HALF,HALF),tries=0;
-    while(tries++<16&&taken.some(o=>wrapGap(o.along,along)<o.hl+t.L/2+7))along=rand(-HALF,HALF);
+    while(tries++<16&&(taken.some(o=>wrapGap(o.along,along)<o.hl+t.L/2+7)||inBox(along,t.L/2)))along=rand(-HALF,HALF);
+    along=clearOfBox(along,t.L/2);         // final guarantee: never start inside a crossing
     taken.push({along,hl:t.L/2});
     plan.push({t,axis,dir,lineIdx,along,key});
   }
@@ -700,10 +746,16 @@ function buildCars(){
     mesh.castShadow=true;mesh.position.set(x,0,z);mesh.rotation.y=yaw;scene.add(mesh);
 
     const dr=DRIVE[t.kind],ll=lightLayout(t),cruise=rand(dr.cruise[0],dr.cruise[1]);
-    const c={x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
+    // id is fixed at build time and never reused: it is the last tie-break of a crossing, the one that
+    // lets four cars arriving together elect a single leader without two drivers disagreeing twice.
+    const c={id:cars.length,x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
       kind:t.kind,type:t,mesh,wr:t.wr,lensScale:ll.s,
       hw:t.W/2+.1,hl:t.L/2+.1,dmin:t.L+(t.kind==='car'?3.5:6),brakeRange:t.L+(t.kind==='car'?24:30),
-      cruise,speed:cruise*.85,acc:dr.acc,dec:dr.dec,spin:0,braking:false,
+      cruise,speed:cruise*.85,acc:dr.acc,dec:dr.dec,spin:0,braking:false,yielding:false,
+      // Junction state, rewritten every frame by arbitrateCrossings(): lead = the car we follow, xs = the
+      // square we are engaged with, xGo = its verdict. stall/unstick/revDist are timers — patience at a
+      // held line, seconds wedged inside a box, metres already given way while reversing out.
+      lead:null,xs:null,xGo:true,stall:0,unstick:0,reverse:0,revDist:0,
       wheels:vehicleWheels(t),heads:ll.heads,tails:ll.tails};
     cars.push(c);
     const g=lanes.get(laneKey(c))||lanes.set(laneKey(c),[]).get(laneKey(c));g.push(c);
@@ -763,40 +815,432 @@ function buildPeds(){
 
 
 
-/* ---------- character ---------- */
-const player={x:CELL*4+CELL/2,z:-HALF+CELL*3,heading:0,yaw:0,pitch:0.15,vx:0,vz:0,bob:0,stagger:0};
+// The hero: a physics body plus the rig that draws him (built at the bottom of this section).
+
+const player={x:CELL*4+CELL/2,z:-HALF+CELL*3,heading:0,yaw:0,pitch:0.15,vx:0,vz:0,stagger:0};
+
 let charGroup;
-// A ~2 m rig with the joints where a body has them: hips at 0.94, shoulders at 1.46. Every limb hangs
-// from its own pivot group, so legs swing from the hip line — previously all four limbs were parked at
-// y=1.5 (legs growing out of the shoulders, feet dangling above the asphalt).
+
+
+
+/* ---------- character: a rigged walker, one merged mesh per bone ----------------------------
+
+   The hero is on screen every frame from six metres behind, so he gets what the crowd does not: a
+
+   face, two-segment limbs and clothing you can actually read. Bones are THREE.Group, each holding ONE
+
+   merged mesh; colours live in vertex colours (see mergeGeometries), so a limb carries shading, seams
+
+   and wear without another material or draw call:
+
+
+
+     body ─ hips ─ pelvis/belt         thigh → shin → foot          (knee + ankle are own bones)
+
+            └ chest ─ jacket/tee/backpack    shoulder → upperArm → forearm → hand
+
+                  └ neck → head → {skull, hair, ears/nose}
+
+
+
+   The skull is the only textured part: makeFaceTexture() paints eyes, brows, nose shading and stubble
+
+   into one canvas that wraps the head ellipsoid (u = azimuth, v = crown→chin), which keeps the face to
+
+   a single draw call. */
+
+const SKIN=0xdba078,SKIN_D=0xbb8559,HAIR_C=0x2b1d16;
+
+const JACKET=0x2f6fb0,JACKET_D=0x245c93,COLLAR_C=0x1e4a79,TEE=0xdfe5ec;
+
+const DENIM=0x3b475c,DENIM_L=0x4d5c74,DENIM_D=0x2b3444;
+
+const BAG_C=0x2b3945,BAG_D=0x1f2a33,SOLE_W=0xf0f3f7,SNEAK=0x2b3f5c;
+
+
+
+// Gait/idle state for the rig (lives outside `player`, which is physics only).
+
+const CHAR={gait:0,breath:0,idleT:0,lookT:3,lookYaw:0,lookPitch:0,blinkT:2.5,blink:-1,
+
+             lastHeading:0,bones:null};
+
+
+
+/* Face atlas: 512×256 wraps the whole skull — u = azimuth (the nose line sits at u=0.25 → x=128),
+
+   v runs from the crown (v=0, canvas top) down to the chin (v=1). Features are drawn wide and squashed
+
+   because the sphere squeezes them back toward the poles. `blink` paints closed lids instead. */
+
+function faceCanvas(blink){
+
+  const c=document.createElement('canvas');c.width=512;c.height=256;const x=c.getContext('2d');
+
+  const CX=128;                                              // canvas x of the nose line
+
+  x.fillStyle='#dba078';x.fillRect(0,0,512,256);              // skin (also the shaven back of the skull)
+
+
+
+  const soft=(cx,cy,rx,ry,col,a)=>{const r=Math.max(rx,ry),g=x.createRadialGradient(cx,cy,0,cx,cy,r);
+
+    g.addColorStop(0,col);g.addColorStop(1,'rgba(0,0,0,0)');
+
+    x.save();x.translate(cx,cy);x.scale(1,ry/r);x.translate(-cx,-cy);x.globalAlpha=a==null?1:a;
+
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,6.3);x.fill();x.restore();};
+
+
+
+  // jaw/temple shade keeps the skull round; no cheek highlight (it read as dirt smudges)
+
+  soft(CX,212,44,24,'#b98256',.26);soft(CX-56,124,24,40,'#a9744c',.16);soft(CX+56,124,24,40,'#a9744c',.16);
+
+
+
+  // five o'clock shadow: one soft patch over the jaw — a hard outline read as a drawn-on beard
+
+  x.save();x.beginPath();x.moveTo(CX-58,166);x.quadraticCurveTo(CX,236,CX+58,166);
+
+  x.lineTo(CX+50,200);x.quadraticCurveTo(CX,248,CX-50,200);x.closePath();
+
+  const bg=x.createLinearGradient(0,170,0,238);bg.addColorStop(0,'rgba(43,29,22,0)');
+
+  bg.addColorStop(.6,'rgba(43,29,22,.2)');bg.addColorStop(1,'rgba(43,29,22,.26)');
+
+  x.fillStyle=bg;x.fill();x.restore();
+
+
+
+  const eye=(s)=>{
+
+    const ex=CX+s*31;
+
+    soft(ex,127,16,8.5,'#ffffff',.95);                        // sclera
+
+    if(!blink){
+
+      const g=x.createRadialGradient(ex-2,123,1,ex,126,8.4);g.addColorStop(0,'#6b4527');g.addColorStop(1,'#160f0b');
+
+      x.fillStyle=g;x.beginPath();x.arc(ex,126,6.9,0,6.3);x.fill();
+
+      x.fillStyle='#0a0708';x.beginPath();x.arc(ex,126,3.2,0,6.3);x.fill();
+
+      x.fillStyle='rgba(255,255,255,.92)';x.beginPath();x.arc(ex-2,123.4,1.8,0,6.3);x.fill();
+
+    }else{
+
+      x.strokeStyle='#a9744c';x.lineWidth=3.4;x.beginPath();x.moveTo(ex-13,127);x.lineTo(ex+14,126);x.stroke();
+
+    }
+
+    x.strokeStyle='rgba(58,38,26,.8)';x.lineWidth=2.6;         // upper lid / lash line
+
+    x.beginPath();x.arc(ex,125,14,Math.PI*1.08,Math.PI*1.96);x.stroke();
+
+    x.strokeStyle='rgba(43,29,22,.85)';x.lineWidth=5;          // brow: low and straight, sits on the lid
+
+    x.beginPath();x.moveTo(ex-15*s,107);x.lineTo(ex+14*s,104);x.stroke();
+
+  };
+
+  eye(-1);eye(1);
+
+
+
+  // nose: shading down one side of the bridge + nostrils (the mesh itself is a separate flesh part)
+
+  const ng=x.createLinearGradient(CX-20,0,CX+20,0);ng.addColorStop(0,'rgba(0,0,0,0)');
+
+  ng.addColorStop(.62,'rgba(150,96,62,.4)');ng.addColorStop(1,'rgba(0,0,0,0)');
+
+  x.fillStyle=ng;x.fillRect(CX-20,112,40,58);
+
+  soft(CX,158,11,7,'#f8d2b1',.4);
+
+  x.fillStyle='rgba(112,66,42,.4)';x.beginPath();x.arc(CX-9,156,2.6,0,6.3);x.fill();
+
+  x.beginPath();x.arc(CX+9,156,2.6,0,6.3);x.fill();
+
+
+
+  // mouth: closed, just under the nose, with a lighter lower lip
+
+  x.strokeStyle='rgba(96,54,44,.7)';x.lineWidth=2.8;
+
+  x.beginPath();x.moveTo(CX-14,190);x.quadraticCurveTo(CX,194,CX+14,190);x.stroke();
+
+  soft(CX,196,13,6,'#c98a72',.4);soft(CX,186,11,4,'#b07158',.2);
+
+
+
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
+
+}
+
+
+
+let FACE_OPEN=null,FACE_SHUT=null;      // two canvases of the same face: eyes open / lids down
+
+
+
 function buildCharacter(){
+
   charGroup=new THREE.Group();scene.add(charGroup);
-  const skin=new THREE.MeshStandardMaterial({color:0xd9a878,roughness:.8});
-  const jacket=new THREE.MeshStandardMaterial({color:0x2f6fb0,roughness:.75});
-  const pants=new THREE.MeshStandardMaterial({color:0x333844,roughness:.9});
-  const shoe=new THREE.MeshStandardMaterial({color:0x1a1d22,roughness:.6});
-  const HIP=0.94,SH=1.46;
 
-  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.28,0.52,6,14),jacket);torso.position.y=HIP+0.36;torso.castShadow=true;charGroup.add(torso);
-  const pelvis=new THREE.Mesh(new THREE.SphereGeometry(0.27,14,10),pants);pelvis.scale.set(1,.75,.86);pelvis.position.y=HIP+.02;pelvis.castShadow=true;charGroup.add(pelvis);
-  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.13,0.18,10),skin);neck.position.y=SH+0.07;charGroup.add(neck);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.24,16,14),skin);head.position.y=SH+0.3;head.castShadow=true;charGroup.add(head);
-  const hair=new THREE.Mesh(new THREE.SphereGeometry(0.25,16,12,0,Math.PI*2,0,Math.PI*0.55),new THREE.MeshStandardMaterial({color:0x241a12}));hair.position.y=SH+0.34;charGroup.add(hair);
+  FACE_OPEN=faceCanvas(false);FACE_SHUT=faceCanvas(true);
 
-  // Limb geometries start at their pivot (y = 0) and hang down from it, so Rx() swings the joint.
-  const armGeo=new THREE.CapsuleGeometry(0.1,0.5,4,10);armGeo.translate(0,-0.35,0);
-  const handGeo=new THREE.SphereGeometry(0.11,10,8);handGeo.translate(0,-0.68,0);
-  const legGeo=new THREE.CapsuleGeometry(0.14,0.52,4,10);legGeo.translate(0,-0.4,0);
-  const shoeGeo=new THREE.BoxGeometry(0.22,0.16,0.42);shoeGeo.translate(0,-0.86,0.07);
+  const body=new THREE.Group();charGroup.add(body);            // lean / roll / bob live here
 
-  function limb(x,y,parts){const g=new THREE.Group();g.position.set(x,y,0);
-    for(const p of parts){const m=new THREE.Mesh(p.geo,p.mat);m.castShadow=true;g.add(m);}
-    charGroup.add(g);return g;}
-  charGroup.userData={
-    armL:limb(-0.36,SH,[{geo:armGeo,mat:jacket},{geo:handGeo,mat:skin}]),
-    armR:limb( 0.36,SH,[{geo:armGeo,mat:jacket},{geo:handGeo,mat:skin}]),
-    legL:limb(-0.15,HIP,[{geo:legGeo,mat:pants},{geo:shoeGeo,mat:shoe}]),
-    legR:limb( 0.15,HIP,[{geo:legGeo,mat:pants},{geo:shoeGeo,mat:shoe}])};
+
+
+  /* cloth carries the vertex colours, skin is matte-warm, metal a hard sheen. The skull alone is
+
+     mapped (face canvas), so it is the only material without vertexColors. */
+
+  const M={
+
+    cloth:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86}),
+
+    flesh:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.52}),
+
+    skull:new THREE.MeshStandardMaterial({map:FACE_OPEN,roughness:.74}),
+
+    hard :new THREE.MeshStandardMaterial({vertexColors:true,metalness:.55,roughness:.34})
+
+  };
+
+  const bone=(parent,x,y,z)=>{const g=new THREE.Group();g.position.set(x,y,z);parent.add(g);return g;};
+
+  const part=(parent,parts,mat)=>{const m=new THREE.Mesh(mergeGeometries(parts),mat);m.castShadow=true;parent.add(m);return m;};
+
+
+
+  /* ---- bones. Joint heights: hip .95, knee .49, ankle .095, shoulder line 1.42, chin 1.53. -----
+
+     Everything is modelled in metres against a 1.79 m figure — the old rig was a stack of oversized
+
+     capsules, which is what made him read as a tyre advert. */
+
+  const hips=bone(body,0,0.95,0);
+
+  const chest=bone(hips,0,0.34,0);
+
+  const neck=bone(chest,0,0.16,0);
+
+  const head=bone(neck,0,0.085,0);
+
+  const shL=bone(chest,-0.163,0.125,0),shR=bone(chest,0.163,0.125,0);
+
+  const upL=bone(shL,0,0,0),upR=bone(shR,0,0,0);
+
+  const foL=bone(upL,0,-0.285,0),foR=bone(upR,0,-0.285,0);
+
+  const haL=bone(foL,0,-0.27,0),haR=bone(foR,0,-0.27,0);
+
+  const thL=bone(hips,-0.103,0,0),thR=bone(hips,0.103,0,0);
+
+  const shnL=bone(thL,0,-0.46,0),shnR=bone(thR,0,-0.46,0);
+
+  const ftL=bone(shnL,0,-0.395,0),ftR=bone(shnR,0,-0.395,0);
+
+
+
+  /* ---- pelvis + belt ------------------------------------------------------------------------- */
+
+  part(hips,[
+
+    cylY(.142,.12,0,-.01,0,DENIM),                             // waist→crotch, straight sides (no balloon)
+
+    cylY(.05,.03,0,-.062,0,DENIM),                                 // seat seam (narrow: no bulge between the legs)
+
+    cylY(.142,.045,0,.072,0,0x4a3527),                         // leather belt
+
+    boxAt(.005,.075,.005,0,-.02,.13,DENIM_D),                  // zip fly
+
+  ],M.cloth);
+
+  part(hips,[boxAt(.042,.036,.014,0,.085,.14,0xa8b2bd),        // buckle + prong
+
+             boxAt(.008,.028,.012,0,.085,.15,0xc7ced6)],M.hard);
+
+
+
+  /* ---- chest: jacket over tee, backpack underneath ------------------------------------------- */
+
+  part(chest,[
+
+    cylY(.139,.3,0,.02,0,JACKET),                              // jacket body: straight sides
+
+    sphAt(.148,.1,.144,0,.16,0,JACKET_D,16),                   // chest/shoulder mass
+
+    cylY(.145,.03,0,-.128,0,JACKET_D),                         // hem ring on the jacket's lower edge
+
+    boxAt(.2,.032,.08,0,.127,-.006,JACKET_D),                  // shoulder yoke (flat bar)
+
+    cylY(.072,.04,0,.196,0,TEE),                               // tee collar
+
+    boxAt(.03,.19,.012,0,.108,.143,COLLAR_C),                  // placket along the opening
+
+    ebox(.055,.012,.01,-.048,.163,.14,-0.5,COLLAR_C),          // lapels: thin angled strips
+
+    ebox(.055,.012,.01, .048,.163,.14, 0.5,COLLAR_C),
+
+    boxAt(.05,.007,.006,-.072,-.015,.139,JACKET_D),            // pocket hints, flush with the cloth
+
+    boxAt(.05,.007,.006, .078,-.09,.138,JACKET_D),
+
+    sphAt(.16,.12,.09,0,-.015,-.13,BAG_D,14),                  // backpack: wider than tall, thicker depth
+
+    boxAt(.04,.15,.015,-.07,.02,-.104,BAG_D),                 // straps over the shoulders
+
+    boxAt(.04,.15,.015,.07,.02,-.104,BAG_D),
+
+    boxAt(.07,.03,.008,0,-.09,-.185,BAG_D),                    // bottom strap
+
+  ],M.cloth);
+
+  part(chest,[boxAt(.014,.03,.012,0,.045,.146,0xd9dee3)],M.hard);   // zip pull
+
+
+
+  /* ---- head: mapped skull + hair cap that sits above the brow + ears/nose in flesh ------------ */
+
+  part(head,[cylY(.05,.09,0,-.055,0,SKIN_D)],M.flesh);         // neck (turns with the head)
+
+  const skull=new THREE.Mesh(new THREE.SphereGeometry(1,24,18),M.skull);
+
+  skull.scale.set(.098,.126,.104);skull.position.set(0,.1,-.003);skull.castShadow=true;head.add(skull);
+
+
+
+  // Hair: a shell over the crown, tilted back so the rim clears the brow and drops lower at the nape.
+
+  const hair=(sx,sy,sz,x,y,z,tilt)=>{const g=new THREE.SphereGeometry(1,20,12,0,Math.PI*2,0,Math.PI*.5);
+
+    g.rotateX(-tilt);g.scale(sx,sy,sz);g.translate(x,y,z);return {geo:g,color:HAIR_C};};
+
+  part(head,[
+
+    hair(.102,.138,.108,0,.096,-.004,0.17),                    // crown shell: narrower than skull so it reads as hair not a helmet
+    boxAt(.05,.05,.06,.045,.062,-.02,HAIR_C),                  // lock 1 (front-left strand)
+    boxAt(.045,.045,.055,-.048,.078,.03,HAIR_C),               // lock 2 (back-right strand)
+
+    boxAt(.06,.04,.05,.02,.03,-.075,HAIR_C),                   // nape fill: lower, narrower than crown
+
+  ],M.cloth);
+
+  part(head,[
+
+    sphAt(.017,.024,.03,0,-.014,.094,SKIN,12),                 // nose: a small wedge on the profile
+
+  ],M.flesh);
+
+
+
+  /* ---- arms: shoulder pad + sleeve, cuff at the wrist, bare hand with fingers ----------------- */
+
+  const buildArm=(up,fore,hand)=>{
+
+    part(up,[
+
+      sphAt(.064,.06,.063,0,-.005,0,JACKET_D,12),              // deltoid
+
+      capY(.055,.2,0,-.145,0,JACKET),
+
+      boxAt(.005,.05,.075,-.052,-.02,.008,COLLAR_C),           // epaulette seam
+
+    ],M.cloth);
+
+    part(fore,[
+
+      sphAt(.053,.055,.053,0,-.008,0,JACKET_D,12),             // elbow gusset (no bare gap at the joint)
+
+      capY(.049,.16,0,-.125,0,JACKET_D),
+
+      cylY(.052,.032,0,-.228,0,COLLAR_C),                      // cuff band
+
+      boxAt(.005,.17,.075,.049,-.12,0,JACKET),                 // outer seam
+
+    ],M.cloth);
+
+    part(hand,[
+
+      sphAt(.045,.044,.026,0,-.026,0,SKIN,12),                  // palm
+
+      capY(.025,.026,0,-.068,.004,SKIN_D),                     // knuckles
+
+      capZ(.018,.042,0,-.09,.024,SKIN),                        // fingers
+
+      boxAt(.052,.012,.046,0,-.113,.01,SKIN_D),                // fingertips
+
+      capX(.011,.024,-.027,-.048,.026,SKIN),                   // thumb
+
+    ],M.flesh);
+
+  };
+
+  buildArm(upL,foL,haL);buildArm(upR,foR,haR);
+
+
+
+  /* ---- legs: thigh + shin with a calf, sneaker on the ankle ----------------------------------- */
+
+  const buildLeg=(th,shn,ft)=>{
+
+    part(th,[
+
+      capY(.082,.31,0,-.215,0,DENIM),
+
+      sphAt(.09,.075,.086,0,-.02,.0,DENIM,12),                 // hip cap: blends the thigh into the pelvis
+
+      sphAt(.073,.072,.07,0,-.4,.004,DENIM,12),                // knee patch bridges the joint
+
+      boxAt(.01,.39,.006,-.076,-.2,.004,DENIM_L),              // outer seam
+
+    ],M.cloth);
+
+    part(shn,[
+
+      sphAt(.063,.07,.065,0,-.012,.004,DENIM,12),              // knee patch (lower half)
+
+      capY(.06,.23,0,-.19,0,DENIM),
+
+      sphAt(.066,.1,.082,0,-.25,.012,DENIM,12),                // calf (same tint: dark one read as a bruise)
+
+      cylY(.05,.045,0,-.335,0,TEE),                            // sock
+
+    ],M.cloth);
+
+    part(ft,[
+
+      boxAt(.08,.062,.135,0,-.014,.016,SNEAK),                 // upper
+
+      sphAt(.042,.04,.038,0,-.024,-.034,0x22324a,12),          // heel counter
+
+      boxAt(.066,.012,.014,0,-.014,.078,TEE),                  // lace bar
+
+      sphAt(.04,.024,.028,0,-.03,.082,TEE,12),                 // toe cap
+
+      boxAt(.09,.015,.205,0,-.087,.024,0x22262c),              // outsole
+
+      boxAt(.084,.022,.195,0,-.066,.024,SOLE_W),               // midsole (thin: no platform)
+
+      boxAt(.011,.014,.085,-.043,-.052,.048,0xff7a3c),         // accent stripe
+
+    ],M.cloth);
+
+  };
+
+  buildLeg(thL,shnL,ftL);buildLeg(thR,shnR,ftR);
+
+
+
+  charGroup.userData={body,hips,chest,neck,head,upL,upR,foL,foR,haL,haR,thL,thR,shnL,shnR,ftL,ftR,mats:M};
+
+  CHAR.bones=charGroup.userData;
+
 }
 
 /* ---------- sky + stars ---------- */
@@ -871,8 +1315,34 @@ function updateCycle(dt){
 
 /* ---------- input ---------- */
 const keys={};let locked=false;
-addEventListener('keydown',e=>{keys[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();});
+addEventListener('keydown',e=>{
+  keys[e.code]=true;if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
+  // Traffic speed nudges also work with the mouse captured, where the slider itself is unreachable.
+  if(e.code==='Minus'||e.code==='NumpadSubtract')setTrafficMult(trafficMult-.25);
+  else if(e.code==='Equal'||e.code==='NumpadAdd')setTrafficMult(trafficMult+.25);
+  else if(e.code==='Digit0'||e.code==='Numpad0')setTrafficMult(1);
+});
 addEventListener('keyup',e=>keys[e.code]=false);
+
+/* ---------- traffic speed multiplier (HUD) ---------- */
+// Scales the *traffic clock* only. Cruise speeds, brake rates, lane gaps and every right-of-way decision
+// keep their calibrated values, so ×0.5 is a slow-motion view of the same simulation rather than a world
+// of slippery cars; ×0 parks the whole fleet in place and ×2.5 fast-forwards a junction. The crowd keeps
+// real time on purpose — walkers are what you read the scale against.
+let trafficMult=1;
+const tmulEl=document.getElementById('tmul'),tsliderEl=document.getElementById('tslider');
+function setTrafficMult(m){
+  trafficMult=clamp(Math.round(m*20)/20,0,2.5);          // snap to quarter steps: slider and keys agree
+  if(tmulEl)tmulEl.textContent='×'+trafficMult.toFixed(2);
+  if(tsliderEl){tsliderEl.value=Math.round(trafficMult*100);
+                tsliderEl.style.setProperty('--fill',(trafficMult/2.5*100).toFixed(1)+'%');}
+}
+if(tsliderEl){
+  tsliderEl.addEventListener('input',()=>setTrafficMult(+tsliderEl.value/100));
+  // The canvas click handler re-locks the mouse; a drag on this slider must not do that.
+  ['pointerdown','mousedown','click','dblclick'].forEach(ev=>tsliderEl.addEventListener(ev,e=>e.stopPropagation()));
+}
+setTrafficMult(1);
 // Pitch raises the camera *behind and above* the player (the rig looks at the character), so a
 // larger pitch means looking further DOWN — hence +movementY, otherwise vertical look is inverted.
 document.addEventListener('mousemove',e=>{if(!locked)return;player.yaw-=e.movementX*0.0024;player.pitch=clamp(player.pitch+e.movementY*0.0024,-1.35,1.35);});
@@ -920,6 +1390,148 @@ function resolvePeds(px,pz,r){
   return {x:px,z:pz};
 }
 
+/* ---------- gait: procedural walk / sprint / idle on top of the rig ---------------------------
+
+   One number drives it all: CHAR.gait advances at a cadence that grows with speed, while the swing
+
+   amplitude is derived FROM ground speed (A = v/ω·L for a rigid leg), so foot travel matches the
+
+   asphalt instead of skating. Knees only bend one way and only through mid-swing, arms counter-swing
+
+   the legs, the pelvis turns and drops at twice per stride, the head is stabilised against all of it.
+
+   Standing still collapses A to 0, which leaves the idle pose: limbs hanging, slow breathing, a
+
+   weight shift and an occasional glance around. */
+
+function animateCharacter(dt,speed,sprint){
+
+  const b=CHAR.bones;if(!b)return;
+
+  const d=Math.min(dt,0.05);                          // updatePlayer may be handed one huge dt (harness)
+
+  const mv=clamp(speed/WALK,0,2.2);                   // 0 standing → 1 walking → ~2 sprinting
+
+  const run=smoothstep(WALK*0.8,WALK*1.35,speed);
+
+  const cad=lerp(11.6,16.2,run);                      // rad/s of the gait cycle
+
+  CHAR.gait=(CHAR.gait+d*cad)%(Math.PI*2);
+
+  const w=CHAR.gait,A=clamp(speed/(cad*0.85),0,1);
+
+
+
+  /* ---- breathing, idle sway, glances, blink -------------------------------------------------- */
+
+  CHAR.breath+=d*(1.1+mv*0.6);
+
+  if(speed>0.3){CHAR.idleT=0;CHAR.lookYaw*=1-Math.pow(0.2,d);}
+
+  else{
+
+    CHAR.idleT+=d;CHAR.lookT-=d;
+
+    // Math.random on purpose: the seeded `rng` stream belongs to city generation (see AGENTS.md)
+
+    if(CHAR.lookT<=0&&Math.abs(CHAR.lookYaw)<0.05){CHAR.lookYaw=Math.random()*1.7-0.85;CHAR.lookPitch=Math.random()*0.46-0.2;CHAR.lookT=1.4+Math.random()*2.4;}
+
+    else if(CHAR.lookT<0.7){CHAR.lookYaw=lerp(CHAR.lookYaw,0,1-Math.pow(0.3,d));CHAR.lookPitch*=0.9;}
+
+  }
+
+  if(CHAR.blink<0){CHAR.blinkT-=d;if(CHAR.blinkT<=0)CHAR.blink=0.1;}else{CHAR.blink-=d;if(CHAR.blink<-1){CHAR.blink=-1;CHAR.blinkT=2.2+Math.random()*3.4;}}
+
+  const shut=CHAR.blink>=0,mats=b.mats,tex=shut?FACE_SHUT:FACE_OPEN;
+
+  if(mats.skull.map!==tex){mats.skull.map=tex;mats.skull.needsUpdate=true;}
+
+
+
+  /* ---- legs: thigh → shin → foot (front of the model is +Z, so a limb swings FORWARD on −Rx) -- */
+
+  const kneeOf=(ph)=>0.09+1.5*A*Math.pow(Math.max(0,Math.cos(ph)),0.7);   // flexes through mid-swing
+
+  const leg=(th,shn,ft,ph)=>{
+
+    th.rotation.x=-A*Math.sin(ph);
+
+    shn.rotation.x=kneeOf(ph);
+
+    ft.rotation.x=-0.34*kneeOf(ph)-0.5*A*Math.cos(ph)+0.02;                // toe up in swing, flat at rest
+
+  };
+
+  leg(b.thL,b.shnL,b.ftL,w);leg(b.thR,b.shnR,b.ftR,w+Math.PI);
+
+
+
+  /* ---- arms: contralateral to the legs, elbows up as speed turns into a run -------------------- */
+
+  const aA=A*lerp(0.85,1.2,sprint?1:0),flex=lerp(0.3,1.45,run);
+
+  const arm=(up,fo,hd,fwd,side)=>{
+
+    up.rotation.x=-aA*fwd*Math.sin(w)-0.02;
+
+    up.rotation.z=0.075*side+0.05*A*side;
+
+    fo.rotation.x=-(flex+0.5*aA*Math.max(0,-fwd*Math.sin(w)));
+
+    hd.rotation.x=-0.12-0.2*aA;
+
+  };
+
+  arm(b.upL,b.foL,b.haL,-1,-1);arm(b.upR,b.foR,b.haR,1,1);
+
+
+
+  /* ---- spine: lean into the effort, pelvis counter-turns under the chest ---------------------- */
+
+  const lean=0.05*mv+0.26*run;
+
+  b.hips.rotation.set(0.03*A*A*Math.cos(2*w)-0.02*mv,0.11*A*Math.sin(w),-0.05*A*Math.cos(w));
+
+  b.chest.rotation.set(lean,0.14*A*Math.sin(w-0.7),0);
+
+  b.neck.rotation.set(-lean*0.45-0.02,0,0);
+
+  b.head.rotation.set(-CHAR.lookPitch+0.03-lean*0.4-0.06*mv,CHAR.lookYaw*0.8-0.12*A*Math.sin(w-0.7),0);
+
+
+
+  // bounce of walking (twice per stride) + the rise and fall of breathing at rest
+
+  b.body.position.set(0,0.034*A*(0.5+0.5*Math.cos(2*w))+0.006*Math.sin(CHAR.breath)*(1-mv*0.8),0);
+
+
+
+  /* ---- a shove from traffic or the crowd throws the arms up and the weight back ---------------- */
+
+  const st=clamp(player.stagger/0.45,0,1);
+
+  if(st>0){
+
+    b.upL.rotation.x-=1.25*st;b.upR.rotation.x-=1.25*st;
+
+    b.foL.rotation.x-=0.8*st;b.foR.rotation.x-=0.8*st;
+
+    b.chest.rotation.x-=0.2*st;b.head.rotation.x-=0.16*st;
+
+  }
+
+
+
+  /* ---- bank into turns so changing direction has some weight ---------------------------------- */
+
+  const turn=clamp((player.heading-CHAR.lastHeading)/Math.max(d,1e-3),-5,5);
+
+  CHAR.lastHeading=player.heading;
+
+  b.body.rotation.z=lerp(b.body.rotation.z,-0.1*clamp(turn,-1,1)*A,1-Math.pow(0.02,d));
+
+}
+
 /* ---------- update player + camera ---------- */
 const _push={x:0,z:0,px:0,pz:0,vx:0,vz:0};
 function updatePlayer(dt,t){
@@ -956,12 +1568,7 @@ function updatePlayer(dt,t){
   if(speed>0.4)player.heading=angLerp(player.heading,Math.atan2(player.vx,player.vz),1-Math.pow(0.0005,dt));
   charGroup.position.set(player.x,0,player.z);charGroup.rotation.y=player.heading;
 
-  player.bob+=dt*speed*1.7;const sw=Math.sin(player.bob)*Math.min(1,speed/6);
-  const u=charGroup.userData;
-  u.legL.rotation.x=sw*0.9;u.legR.rotation.x=-sw*0.9;u.armL.rotation.x=-sw*0.8;u.armR.rotation.x=sw*0.8;
-  // a little more life: arms swing out slightly and the whole body lifts on every step
-  u.armL.rotation.z=-0.07-sw*0.1;u.armR.rotation.z=0.07+sw*0.1;
-  charGroup.position.y=Math.abs(Math.sin(player.bob))*0.045*Math.min(1,speed/5);
+  animateCharacter(dt,speed,sprint);   // rig pose: procedural walk/sprint/idle (see below buildCharacter)
 
   const dist=sprint?7.4:6.2, cp=Math.cos(player.pitch),sp=Math.sin(player.pitch);
   // Floor clamp: looking up drops the orbit rig below the asphalt (pitch < -0.2 put the camera at
@@ -978,10 +1585,79 @@ function updatePlayer(dt,t){
 // keep driving for ~6 m past the last pixel of asphalt before wrapping — read as floating over nothing.
 const CAR_LIMIT=HALF;
 const TRACK=CAR_LIMIT*2;             // cars wrap around the map, so gaps along a lane are periodic
-function gapAhead(c){
-  const g=lanes.get(laneKey(c));let best=Infinity;
-  if(g)for(const o of g){if(o===c)continue;let d=(o.s-c.s)*c.dir;if(d<=0)d+=TRACK;if(d<best)best=d;}
-  return best;
+/* ---- intersections: right of way ----------------------------------------
+   Every vehicle drives strictly along ±X or ±Z (yaw is always a multiple of 90°), so its footprint is
+   an axis-aligned box and a crossing can be arbitrated with plain arithmetic — no raycasts, no trig.
+   The rule is the real one: whoever got onto the crossing first owns it, and two vehicles that arrive
+   together are split by the right-hand rule (помеха справа). Three earlier attempts never showed up on
+   screen because of three separate defects:
+
+     • Reference point. The decision has to be about where the two *lanes* cross, not about the middle of
+       the road: every lane keeps ROAD/4 off its centreline, so judging a pair from one shared reference
+       point was up to ±4 m early or late depending on the directions involved — seconds of slack for a
+       bus, and the oncoming sedan drove straight across its nose. laneCoord() hands both drivers the
+       distance to the same physical point, where |d| ≤ r is exactly when their bodies can touch.
+     • Executability. The promise "I wait behind the line" has to be one the brakes can keep. A target
+       speed ramped linearly over brakeRange equals cruise for anything farther away — no braking at all
+       — so a car only learned it had to yield once it could no longer stop, and rolled into an occupied
+       box. approachLimit() is the kinematic ceiling √(2·a·d): whatever speed it allows, the vehicle can
+       still be standing at the line.
+     • Monotonicity — this is what produced the permanent gridlocks. A pairwise "who would arrive first"
+       test built on current speeds flips the moment either driver brakes: two vehicles handed priority to
+       each other in turn, both crept into the square sideways and then blocked one another forever.
+
+   So a crossing is arbitrated GLOBALLY once per frame instead of pair by pair. crossState() finds the
+   square a vehicle is engaged with — signed `dc`, centre → middle of the box, so a car that has just
+   rolled through still sees the rivals it crossed — and arbitrateCrossings() ranks every vehicle engaged
+   with the same square in ONE total order:
+
+       in the square, earliest entry first  <  free-flow arrival at its own line
+                                            <  помеха справа  <  id
+
+   Free-flow means cruise speed, never the current one: only positions may decide a priority, so braking
+   cannot buy right of way and two drivers can never reach different conclusions. Each arm may then enter
+   only if it gets its whole body out of the square before anything ranked above it reaches its own line
+   (clearance(), a timetable test), while a vehicle already in the box keeps priority until its nose is
+   out — that is what "first onto the crossing wins" means once it is spelled out so two drivers cannot
+   disagree about it.
+
+   Three escapes keep a junction alive, because a strict order alone is not enough: roomToClear() stops an
+   arm from parking sideways across the square when a queue stands on the far side; an arm held for more
+   than STALL_HOLD by something that is itself standing still takes its GO anyway (a stalled rival is not
+   an authority); and a vehicle wedged inside behind a perpendicular body reverses out after UNSTICK_S —
+   the one manoeuvre real drivers have and this simulation lacked. Apart from four timers per car the
+   whole thing is stateless, so a decision can never leak and freeze a junction.
+
+   Coordinates: road line k sits at -HALF+k*CELL on BOTH axes; laneCoord() adds the side of the road a
+   vehicle keeps (buildCars offsets every lane by dir·ROAD/4 — right-hand traffic). A car's travel axis
+   is exactly the axis on which the *crossing* street's lane is offset, so one symmetric expression
+   gives both drivers their distance to the same point. */
+const BOX=ROAD/2;                    // m — half side of the square two roads share
+const CROSS_LOOK=CELL+BOX;           // m — start watching the crossing one block ahead
+const TIE_MARGIN=.45;                // s — arrivals inside this window count as simultaneous
+const CLEAR_MARGIN=1.0;              // s — slack a vehicle may spend clearing the square before a rival arrives
+const CROSS_DMIN=1.2;                // m — stand this far before the box, not bumper-to-bumper
+const STALL_HOLD=2.5;                // s — held this long while nobody ahead moves → arm takes its GO
+const UNSTICK_S=3;                   // s — wedged inside the square behind a perpendicular body → reverse out
+const REVERSE_V=2.6;                 // m/s — top speed of that reverse-out, and REV_MAX how far it goes
+const REV_MAX=14;                    // m — give up and re-decide rather than back all the way down the street
+const modm=(x,m)=>((x%m)+m)%m;       // JS % keeps the sign; lane lines repeat every CELL
+const lineCoord=k=>-HALF+k*CELL;
+// Centre of the lane this vehicle drives in, measured on the axis its road lies along. The sign must
+// stay in sync with buildCars(): heading +Z keeps the +X half of the road, heading +X the −Z half.
+const laneCoord=v=>lineCoord(v.lineIdx)+(v.axis===0?v.dir:-v.dir)*ROAD/4;
+const halfX=v=>v.axis===0?v.hw:v.hl;  // body half-extents along the world axes (yaw = k·90°)
+const halfZ=v=>v.axis===0?v.hl:v.hw;
+// Is o approaching from c's right-hand side? The right arm of a heading (fx,fz) is (fz,-fx): driving
+// north (+Z) keeps the east (+X) arm, so it is the *westbound* vehicle — dir −1 on axis 1 — that comes
+// in from the right. The first version had this sign flipped and handed priority to the vehicle on the
+// left. Only perpendicular lanes are ever compared, so dir alone identifies the arm.
+const fromRight=(c,o)=>o.dir===(c.axis===0?-c.dir:c.dir);
+// Nearest vehicle in our own lane (periodic across the map edge), as {car, distance centre-to-centre}.
+function leaderAhead(c){
+  const g=lanes.get(laneKey(c));let best=null,bd=Infinity;
+  if(g)for(const o of g){if(o===c)continue;let d=(o.s-c.s)*c.dir;if(d<=0)d+=TRACK;if(d<bd){bd=d;best=o;}}
+  return best?{car:best,d:bd}:null;
 }
 // Bumper-to-obstacle distance when (ox,oz) stands in this car's path, Infinity when the lane is clear.
 function pathGap(c,ox,oz,pad){
@@ -991,15 +1667,202 @@ function pathGap(c,ox,oz,pad){
   if(lz<-c.hl||Math.abs(lx)>c.hw+pad)return Infinity;
   return lz-c.hl;
 }
-function updateCars(dt){
+// Nearest vehicle body standing in the path, nose to obstacle; Infinity when the way is clear. This is
+// the last resort: right of way decides who goes first, this makes sure nobody drives through a body —
+// including into a box that is blocked by a car which had priority and is still sitting in it.
+//
+// Only bodies we could actually drive INTO count. A rival we have already passed — or the follower
+// breathing our bumper — sits behind the nose plane, so rolling forward cannot hit it; counting those
+// anchored every vehicle in a queue to its own rear axle, because dmin is larger than a standstill gap
+// and one phantom obstacle behind the nose zeroed the throttle forever. A body broadside across our lane
+// keeps its centre inside reach (dF+oF>0) and is still counted, wedged included.
+function bodyGap(c,perpOnly){
+  let best=Infinity;
+  for(const o of cars){
+    if(o===c||(perpOnly&&o.axis===c.axis))continue;
+    const dF=c.axis===0?(o.z-c.z)*c.dir:(o.x-c.x)*c.dir;      // centre-to-centre along our heading
+    if(dF>70)continue;
+    const lat=c.axis===0?Math.abs(o.x-c.x):Math.abs(o.z-c.z);  // body-to-body across the lane
+    const latH=c.axis===0?halfX(o):halfZ(o),oF=c.axis===0?halfZ(o):halfX(o);
+    if(lat>latH+c.hw+.2)continue;
+    if(dF+oF<=0)continue;                                      // wholly behind us: undriveable-into
+    const d=dF-oF-c.hl;if(d<best)best=d;
+  }
+  return best;
+}
+// Mirror of bodyGap for reversing out of a junction: the nearest body of our own lane behind us. Only
+// our own lane can be backed into — cross traffic is what we are escaping in the first place.
+function bodyGapBehind(c){
+  let best=Infinity;
+  for(const o of cars){
+    if(o===c||o.axis!==c.axis)continue;
+    const dF=c.axis===0?(o.z-c.z)*c.dir:(o.x-c.x)*c.dir;
+    if(dF>=0||dF<-45)continue;
+    const lat=c.axis===0?Math.abs(o.x-c.x):Math.abs(o.z-c.z);
+    const latH=c.axis===0?halfX(o):halfZ(o),oB=c.axis===0?halfZ(o):halfX(o);
+    if(lat>latH+c.hw+.2)continue;
+    const d=-dF-oB-c.hl;if(d<best)best=d;
+  }
+  return best;
+}
+// The speed that can still be lost before an obstacle `d` metres ahead while leaving `standoff` clear:
+// v = √(2·a·d) is the exact ceiling, so a car never promises a stop it cannot deliver. The linear ramp
+// this replaces returned cruise speed for every d ≥ brakeRange — i.e. no braking whatsoever — which is
+// why vehicles used to arrive at a red-looking junction at full speed.
+function approachLimit(c,d,standoff){
+  const free=d-standoff;
+  return free<=0?0:Math.min(Math.sqrt(2*c.dec*free),c.cruise);
+}
+// The square this vehicle is engaged with right now, or null when no crossing is close enough to matter.
+// dNext — the distance to the next road line on our lane — repeats every CELL and can never express "we
+// have already driven through it", so the result carries a signed dc: centre → middle of the box along
+// the heading, negative once we are past the middle. That is what lets a car in the middle of a square
+// still see the rivals it crossed instead of handing them a blind corner. stop = nose → near edge of the
+// shared square, so stop ≤ 0 exactly when the body has begun to block the crossing.
+function crossState(c){
+  const rel=c.s+HALF,dNext=modm(c.dir>0?-rel:rel,CELL);       // centre → next crossing point along lane
+  const xN=Math.round((c.s+c.dir*dNext+HALF)/CELL);            // line index of the street crossing us
+  let xIdx=xN,dc=dNext;
+  if(dNext>=BOX+c.hl){                                         // outside both boxes on this block
+    if(CELL-dNext<BOX+c.hl){xIdx=xN-(c.dir>0?1:-1);dc=-(CELL-dNext);}   // still inside the one behind us
+    else if(dNext>CROSS_LOOK)return null;                      // nothing to arbitrate yet
+  }
+  return {key:(c.axis===0?c.lineIdx+':'+xIdx:xIdx+':'+c.lineIdx),xIdx,dc,stop:dc-c.hl-BOX};
+}
+// Timetable test between two vehicles engaged with the same square, ranked so that o goes first: how
+// many seconds c must spend behind its line so that it can put its whole body across o's lane before o
+// reaches the point those two lanes share (≤ 0 → both fit, go). Both legs run on CRUISE speed and
+// positions only — never the current speed, which is exactly what made the old pairwise test flip every
+// time somebody touched the brakes. c and o must be perpendicular; parallel arms never share a conflict.
+//
+// Both legs are timed to the SAME physical point P = our lane centre × their lane centre. Timing o only
+// to its own stop line instead charged us with a rival that still had most of the square to go, while
+// pretending it had reached the conflict; and for a rival already sitting at its line (stop=0) it left
+// hold = tClear, so one stationary car held every arm of its crossing from across the block.
+function clearance(c,o){
+  if(o.axis===c.axis)return Infinity;
+  const dC=(laneCoord(o)-c.s)*c.dir;                    // our centre → where our lane crosses theirs
+  if(dC<-c.hl-o.hw||dC>CROSS_LOOK+30)return Infinity;   // not engaged with this rival at all
+  const tClear=(dC+c.hl+o.hw)/Math.max(c.cruise,.5)+CLEAR_MARGIN;
+  const dO=(laneCoord(c)-o.s)*o.dir;                    // their centre → the same point, along them
+  if(dO<=0)return -Infinity;                            // through and exiting: roomToClear owns that body
+  return tClear-Math.max(dO-o.hl,0)/Math.max(o.cruise,.5);
+}
+// Do not commit to a square you cannot leave: with a queue standing on the far side — or a body already
+// parked across our lane inside it — entering means stopping sideways in front of every other arm.
+// Flowing traffic is leaderAhead's job; this only looks at the kind that stays.
+function roomToClear(c){
+  const xs=c.xs;
+  if(c.lead&&c.lead.car.speed<2&&c.lead.d<xs.dc+BOX+c.hl+c.lead.car.hl+2)return false;
+  for(const o of c.xs.list){
+    if(o===c||o.axis===c.axis||o.speed>=1)continue;      // only a body across our lane counts
+    const dC=(laneCoord(o)-c.s)*c.dir;                   // their band, measured along our heading
+    if(dC<-c.hl-o.hw)continue;                           // and it is behind us
+    if(Math.abs(laneCoord(c)-o.s)>o.hl+c.hw)continue;    // they have driven out of our lane already
+    return false;
+  }
+  return true;
+}
+// One pass per frame over every crossing with traffic on it: rank each square's vehicles, then tell them
+// GO or HELD. Writes c.xs (the square we are watching) and c.xGo (whether we may cross its line).
+function arbitrateCrossings(){
+  const crossings=new Map();
   for(const c of cars){
+    c.xs=null;c.xGo=true;
+    if(c.reverse)continue;                               // backing out: the decision is already made
+    const xs=crossState(c);if(!xs)continue;
+    // One array per square, shared by every arm of it: roomToClear() reads c.xs.list, so a private
+    // [c] there would make each vehicle believe it crosses alone. (Map.set returns the Map, not the value.)
+    let list=crossings.get(xs.key);
+    if(!list){list=[];crossings.set(xs.key,list);}
+    c.xs=xs;xs.list=list;list.push(c);
+  }
+  for(const list of crossings.values()){
+    if(list.length<2)continue;                           // nobody to argue with
+    for(const c of list)c._inBox=Math.abs(c.xs.dc)<BOX+c.hl;
+    // One total order for the whole square, so priority cannot be mutual. The comparator only ever reads
+    // positions (plus ids), never speeds: braking must not buy right of way.
+    list.sort((a,b)=>{
+      const ai=a._inBox?0:1,bi=b._inBox?0:1;
+      if(ai!==bi)return ai-bi;                           // in the square first — they are committed
+      if(ai===0)return a.xs.dc-b.xs.dc;                  // earliest entry owns it
+      const ta=a.xs.stop/Math.max(a.cruise,.5),tb=b.xs.stop/Math.max(b.cruise,.5);
+      if(Math.abs(ta-tb)>TIE_MARGIN)return ta<tb?-1:1;   // free-flow arrival at the line
+      // Помеха справа only ever splits perpendicular arms: two cars on the same road going opposite
+      // ways are not each other's right-hand traffic, and asking them would flip the comparison.
+      if(a.axis!==b.axis){if(fromRight(a,b))return 1;if(fromRight(b,a))return -1;}
+      return a.id-b.id;                                  // last resort: antisymmetric, exactly one winner
+    });
+    for(const c of list){
+      if(c._inBox){c.xGo=true;continue;}                 // committed: keep rolling, bodyGap still guards
+      let hold=-Infinity;
+      for(let j=0;j<list.length;j++){
+        const o=list[j];if(o===c)break;                  // only arms ranked above us can hold us
+        if(o.speed<.5&&o.stall>STALL_HOLD)continue;      // a rival that cannot move is not an authority
+        const h=clearance(c,o);
+        if(h>hold)hold=h;
+      }
+      const tE=Math.max(c.xs.stop,0)/Math.max(c.cruise,.5);
+      c.xGo=tE>=hold&&roomToClear(c);
+      // Liveness: held for STALL_HOLD by something that is itself standing still, with nothing across
+      // our nose and room on the far side → take the crossing. Without this one stubborn pedestrian (or
+      // the player) silences an arm forever.
+      if(!c.xGo&&c.speed<.5&&c.stall>STALL_HOLD&&bodyGap(c,true)>1&&roomToClear(c))c.xGo=true;
+    }
+  }
+}
+// Timers and the one manoeuvre a box full of perpendicular steel needs: reversing out. Both drivers in a
+// wedge are committed by the rule and neither can steer, so after UNSTICK_S the car that is standing in
+// the square with a body across its lane gives way the hard way and hands the crossing over.
+function unstickCars(dt){
+  for(const c of cars){
+    if(c.reverse){                                       // owns this car's throttle while it backs out
+      const gap=bodyGapBehind(c);
+      const lim=gap-.6<=0?0:Math.min(REVERSE_V,Math.sqrt(2*c.dec*(gap-.6)));
+      c.speed+=clamp(lim-c.speed,-c.dec*dt,c.acc*dt);
+      const step=c.speed*dt;
+      if(c.axis===0)c.z-=c.dir*step;else c.x-=c.dir*step;
+      c.revDist+=step;c.spin-=c.speed*dt/c.wr;           // tyres roll the other way in reverse
+      const xs=crossState(c);                            // recomputed: we are moving out of the box
+      const clear=(!xs||xs.dc>=BOX+c.hl-.2)&&gap>2.5;
+      if(c.revDist>REV_MAX||clear||c.speed<.05){
+        c.reverse=0;c.revDist=0;c.unstick=0;c.speed=0;   // re-decide from outside the square
+      }
+      c.s=c.axis===0?c.z:c.x;
+      c.mesh.position.set(c.x,0,c.z);c.mesh.rotation.y=c.yaw;
+      continue;
+    }
+    const xs=c.xs,wedged=!!xs&&Math.abs(xs.dc)<BOX+c.hl&&c.speed<.4&&bodyGap(c,true)<1.5;
+    c.unstick=wedged?c.unstick+dt:0;
+    if(wedged&&c.unstick>UNSTICK_S){c.reverse=1;c.revDist=0;c.braking=false;}
+  }
+}
+function updateCars(dt){
+  // Pass order matters: the crossing verdict needs this frame's lane gap, and nothing may move before the
+  // verdicts are in, so a car never drives on last frame's decision.
+  for(const c of cars){
+    c.lead=leaderAhead(c);
+    if(c.speed<.5)c.stall+=dt;else c.stall=0;            // patience timer for the liveness escapes
+  }
+  arbitrateCrossings();
+  unstickCars(dt);
+  for(const c of cars){
+    if(c.reverse)continue;                               // unstickCars drives this one backwards
     let target=c.cruise;
-    // slow down for the car ahead, then yield to the player and to anyone crossing in front
-    const gap=gapAhead(c);
-    if(gap<Infinity)target=Math.min(target,c.cruise*clamp((gap-c.dmin)/(c.brakeRange-c.dmin),0,1));
+    // 1) car-following in our own lane
+    const lead=c.lead;
+    if(lead)target=Math.min(target,approachLimit(c,lead.d,c.dmin));
+    // 2) right of way at the crossing ahead: first onto the box wins, a tie goes to the vehicle on the
+    //    right. Yielding shows up as brake lights, so the player can read the decision.
+    c.yielding=!!c.xs&&!c.xGo;
+    if(c.yielding)target=Math.min(target,approachLimit(c,Math.max(c.xs.stop,0),CROSS_DMIN));
+    // 3) never drive into a body that is already in the path, whoever had the right of way
+    const bg=bodyGap(c,false);
+    if(bg<Infinity)target=Math.min(target,approachLimit(c,bg,c.dmin));
+    // 4) pedestrians and the player have priority over everything
     let gp=pathGap(c,player.x,player.z,.5);
     for(const p of peds){const d=pathGap(c,p.x,p.z,.3);if(d<gp)gp=d;}
-    if(gp<Infinity)target=Math.min(target,c.cruise*clamp((gp-c.dmin)/(c.brakeRange-c.dmin),0,1));
+    if(gp<Infinity)target=Math.min(target,approachLimit(c,gp,c.dmin));
     const a=target>c.speed?c.acc:c.dec;   // m/s² — brakes bite harder than the throttle, per body mass
     c.braking=target<c.speed-.35;
     c.speed+=clamp(target-c.speed,-a*dt,a*dt);
@@ -1108,7 +1971,7 @@ function drawMinimap(){
 /* ---------- loop ---------- */
 let last=performance.now(),started=false,frame=0;
 function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,0.05);last=now;const t=now/1000;
-  updateCycle(dt);updatePlayer(dt,t);updateCars(dt);updatePeds(dt,t);
+  updateCycle(dt);updatePlayer(dt,t);updateCars(dt*trafficMult);updatePeds(dt,t);
   if((frame++&3)===0){updateLights();drawMinimap();}   // nearest-lamp sort + minimap redraw: ~15Hz is plenty
   renderer.render(scene,camera);}
 
@@ -1157,36 +2020,56 @@ boot().catch(err=>{
   const t=document.getElementById('ltxt');
   if(t){t.style.color='var(--red)';t.textContent='Generation failed: '+((err&&err.message)||err);}
 });
+
+/* ---------- surface for the harness ---------- */
+// Classic <script> shares its top-level lexical scope with page.evaluate(), so
+// harness/check-city.js could read `cars`, `halfX`, `dayTime` by bare name.
+// ES modules do not: their top-level bindings are private to the module, and
+// `page.evaluate(() => cars.length)` fails with ReferenceError. Mirror the same
+// names onto window.
+//
+// Two kinds of binding, two mechanisms:
+//   · const objects/functions  → Object.assign, the harness mutates through the
+//     same reference (cars.push, player.pitch = …) and reads the same functions.
+//   · let                       → accessor on window. Plain assignment would
+//     snapshot the value at module-eval time: renderer is undefined until
+//     initRenderer() runs, dayTime ticks every frame, animate is replaced by
+//     the screenshot block.
+//
+// Keep this list minimal: only what check-city.js reads or writes. Adding a new
+// top-level binding that the harness needs means adding it here too.
+//
+// When this contract grows past a few dozen names, promote it to a single
+// window.MERIDIAN namespace and update harness/check-city.js to match — the flat
+// list is a migration convenience, not a design.
+Object.assign(window, {
+  // Data — the harness mutates through the same references
+  cars, buildings, trees, lampLightPool, player,
+  // Helpers the right-of-way audit calls directly
+  halfX, halfZ,
+  // Frame drivers — the sim block steps the game without the rAF loop
+  updateCars, updatePeds, updatePlayer, updateCycle, drawMinimap,
+  // Constants the assertions compare against
+  GRID, CELL, ROAD, HALF, GROUND_APRON,
+  // Material the day/night cycle check reads
+  glassMat,
+  // Namespace — the instance-buffer check builds a scratch Matrix4
+  THREE,
+});
+Object.defineProperties(window, {
+  // let-bound, read-only from the harness
+  renderer:  {get:()=>renderer,  configurable:true},
+  scene:     {get:()=>scene,     configurable:true},
+  camera:    {get:()=>camera,    configurable:true},
+  moonMesh:  {get:()=>moonMesh,  configurable:true},
+  wheelMesh: {get:()=>wheelMesh, configurable:true},
+  headMesh:  {get:()=>headMesh,  configurable:true},
+  // let-bound and written by the harness: `dayTime = 0.83` before cycle checks,
+  // `animate = () => {}` to freeze the loop for screenshots
+  dayTime:   {get:()=>dayTime,   set:v=>{dayTime=v;},  configurable:true},
+  animate:   {get:()=>animate,   set:v=>{animate=v;},  configurable:true},
+});
+
 </script>
-
-<script type="module">
-  import { MainPerson } from './character.js';
-
-  // Initialize character
-  const player = new MainPerson();
-
-  // Example: Bind keys to animations (based on Citation 2)
-  window.addEventListener('keydown', (e) => {
-    switch(e.key) {
-      case '0': player.setAnimation('idle'); break;
-      case '1': player.setAnimation('walk_normal'); break;
-      case '6': player.setAnimation('run_sprint'); break;
-      // ... map other keys to animations defined in character.js
-    }
-  });
-
-  // Main Loop
-  function loop() {
-    const pose = player.update();
-    
-    // Apply pose to your 3D renderer here
-    // applyPoseToRenderer(pose); 
-    
-    requestAnimationFrame(loop);
-  }
-  
-  loop();
-</script>
-
 </body>
 </html>

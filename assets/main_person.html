@@ -51,45 +51,73 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 /* ============================================================
    ПАРАМЕТРЫ ПЕРСОНАЖА
+   Все размеры — в МЕТРАХ.
+   Оригинальный дизайн был в условных юнитах (рост ≈ 4.0),
+   коэффициент перевода: 1 юнит = 0.45 м → рост ≈ 1.80 м.
    ============================================================ */
 const P = {
-  scale: 1.0, hipX: 0.23, shoulderX: 0.48,
-  y: { ankle: 0.42, knee: 0.95, hip: 1.80, wrist: 1.72, elbow: 2.20,
-       shoulder: 2.75, chest: 2.30, neck: 2.95, head: 3.55 },
+  scale: 1.0,
+  hipX: 0.1035,            // 0.23 юнита
+  shoulderX: 0.216,        // 0.48 юнита
+  y: {
+    ankle: 0.189,          // 0.42
+    knee: 0.4275,          // 0.95
+    hip: 0.81,             // 1.80
+    wrist: 0.774,          // 1.72
+    elbow: 0.99,           // 2.20
+    shoulder: 1.2375,      // 2.75
+    chest: 1.035,          // 2.30
+    neck: 1.3275,          // 2.95
+    head: 1.5975           // 3.55
+  },
   r: {
-    thighTop: 0.200, thighBot: 0.170, knee: 0.170,
-    shinTop: 0.165, shinBot: 0.140,
-    shoulder: 0.190, upperArmTop: 0.155, upperArmBot: 0.140,
-    elbow: 0.150, foreArmTop: 0.140, foreArmBot: 0.120,
-    hand: 0.150, neckTop: 0.150, neckBot: 0.175,
-    head: [0.76, 0.82, 0.78], hair: [0.82, 0.34, 0.84],
-    eye: 0.090, pupil: 0.038, irisR: 0.055, irisT: 0.012
+    thighTop: 0.09,        // 0.200
+    thighBot: 0.0765,      // 0.170
+    knee: 0.0765,          // 0.170
+    shinTop: 0.07425,      // 0.165
+    shinBot: 0.063,        // 0.140
+    shoulder: 0.0855,      // 0.190
+    upperArmTop: 0.06975,  // 0.155
+    upperArmBot: 0.063,    // 0.140
+    elbow: 0.0675,         // 0.150
+    foreArmTop: 0.063,     // 0.140
+    foreArmBot: 0.054,     // 0.120
+    hand: 0.0675,          // 0.150
+    neckTop: 0.0675,       // 0.150
+    neckBot: 0.07875,      // 0.175
+    head: [0.342, 0.369, 0.351],   // 0.76 × 0.82 × 0.78
+    hair: [0.369, 0.153, 0.378],   // 0.82 × 0.34 × 0.84
+    eye: 0.0405,           // 0.090
+    pupil: 0.0171,         // 0.038
+    irisR: 0.02475,        // 0.055
+    irisT: 0.0054          // 0.012
   },
   torso: [
-    [1.74, 1.88, 0.42, 0.42, 'puffer'],
-    [1.88, 2.50, 0.42, 0.46, 'puffer'],
-    [2.50, 2.94, 0.46, 0.30, 'puffer'],
-    [2.94, 3.10, 0.30, 0.27, 'puffer']
+    [0.783,  0.846,  0.189,  0.189,  'puffer'],  // 1.74 – 1.88
+    [0.846,  1.125,  0.189,  0.207,  'puffer'],  // 1.88 – 2.50
+    [1.125,  1.323,  0.207,  0.135,  'puffer'],  // 2.50 – 2.94
+    [1.323,  1.395,  0.135,  0.1215, 'puffer']   // 2.94 – 3.10
   ],
-  torsoLimeY: [2.72, 2.84, 0.395],
-  torsoHood: { r: 0.42, y: 2.78, z: -0.22, thetaLen: 0.78, tilt: -0.35 },
-  torsoPocket: { w: 0.50, h: 0.26, d: 0.20, y: 2.08, z: 0.38 },
-  zipper: { yFrom: 2.24, yTo: 2.905, step: 0.066, size: [0.05, 0.062, 0.05] },
-  drawstrings: { x: 0.125, y: 2.64, z: 0.43, len: 0.48, tilt: -0.58,
-                 tipY: 2.44, tipZ: 0.562, r: 0.022, tipR: 0.042 },
+  torsoLimeY: [1.224, 1.278, 0.17775],           // 2.72, 2.84, 0.395
+  torsoHood: { r: 0.189, y: 1.251, z: -0.099, thetaLen: 0.78, tilt: -0.35 },
+  torsoPocket: { w: 0.225, h: 0.117, d: 0.09, y: 0.936, z: 0.171 },
+  zipper: { yFrom: 1.008, yTo: 1.30725, step: 0.0297, size: [0.0225, 0.0279, 0.0225] },
+  drawstrings: { x: 0.05625, y: 1.188, z: 0.1935, len: 0.216, tilt: -0.58,
+                 tipY: 1.098, tipZ: 0.2529, r: 0.0099, tipR: 0.0189 },
   face: {
-    eyeX: 0.16, eyeY: 0.02, eyeZ: 0.40, pupilZ: 0.47, irisZ: 0.48,
-    browY: 0.16, browZ: 0.42, browSize: [0.17, 0.045, 0.06], browTilt: 0.12,
-    noseY: -0.06, noseZ: 0.44, noseR: 0.050, noseH: 0.12,
-    mouthY: -0.21, mouthZ: 0.42, mouthSize: [0.16, 0.03, 0.05],
-    hairY: 0.35, hairZ: -0.03
+    eyeX: 0.072,    eyeY: 0.009,    eyeZ: 0.18,
+    pupilZ: 0.2115, irisZ: 0.216,
+    browY: 0.072,   browZ: 0.189,   browSize: [0.0765, 0.02025, 0.027], browTilt: 0.12,
+    noseY: -0.027,  noseZ: 0.198,   noseR: 0.0225, noseH: 0.054,
+    mouthY: -0.0945, mouthZ: 0.189, mouthSize: [0.072, 0.0135, 0.0225],
+    hairY: 0.1575,  hairZ: -0.0135
   },
   shoe: {
-    soleW: 0.34, soleH: 0.11, soleD: 0.62,
-    upperW: 0.30, upperD: 0.46, upperZ: -0.02,
-    toeR: 0.150, toeZ: 0.20,
-    heelW: 0.26, heelH: 0.13, heelD: 0.10, heelZ: -0.235,
-    lace: { w: 0.19, h: 0.035, d: 0.05, count: 3, spread: 0.085, startZ: -0.14 }
+    soleW: 0.153,  soleH: 0.0495, soleD: 0.279,
+    upperW: 0.135, upperD: 0.207, upperZ: -0.009,
+    toeR: 0.0675,  toeZ: 0.09,
+    heelW: 0.117,  heelH: 0.0585, heelD: 0.045, heelZ: -0.10575,
+    lace: { w: 0.0855, h: 0.01575, d: 0.0225, count: 3, spread: 0.03825, startZ: -0.063 }
   }
 };
 
@@ -180,7 +208,7 @@ function addTorsoSection(parent, yB, yT, rB, rT, mat, chestWorldY) {
 }
 
 /* ============================================================
-   СЦЕНА / КАМЕРА / СВЕТ
+   СЦЕНА / КАМЕРА / СВЕТ (в метрах)
    ============================================================ */
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -194,35 +222,42 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(4.6, 3.6, 7.4);
+camera.position.set(2.07, 1.62, 3.33);           // было (4.6, 3.6, 7.4) · 0.45
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.95, 0);
+controls.target.set(0, 0.8775, 0);               // было (0, 1.95, 0) · 0.45
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minDistance = 3.2; controls.maxDistance = 18;
+controls.minDistance = 1.44;                     // было 3.2 · 0.45
+controls.maxDistance = 8.1;                      // было 18  · 0.45
 controls.maxPolarAngle = Math.PI * 0.52;
 controls.update();
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0xa9cfc9, 2.2));
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
-keyLight.position.set(5, 9, 6);
+keyLight.position.set(2.25, 4.05, 2.7);          // было (5, 9, 6) · 0.45
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
-keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 30;
-keyLight.shadow.camera.left = -6; keyLight.shadow.camera.right = 6;
-keyLight.shadow.camera.top = 8;   keyLight.shadow.camera.bottom = -2;
-keyLight.shadow.bias = -0.0008; keyLight.shadow.normalBias = 0.02;
+keyLight.shadow.camera.near = 0.45;              // было 1   · 0.45
+keyLight.shadow.camera.far  = 13.5;              // было 30  · 0.45
+keyLight.shadow.camera.left   = -2.7;            // было -6  · 0.45
+keyLight.shadow.camera.right  =  2.7;            // было  6  · 0.45
+keyLight.shadow.camera.top    =  3.6;            // было  8  · 0.45
+keyLight.shadow.camera.bottom = -0.9;            // было -2  · 0.45
+keyLight.shadow.bias = -0.0008;                  // без изменений (глубинная величина)
+keyLight.shadow.normalBias = 0.009;              // было 0.02 · 0.45
 scene.add(keyLight);
 
 const rimLight = new THREE.DirectionalLight(0x4ade80, 1.2);
-rimLight.position.set(-6, 4, -7); scene.add(rimLight);
+rimLight.position.set(-2.7, 1.8, -3.15);         // было (-6, 4, -7) · 0.45
+scene.add(rimLight);
 
 const fillLight = new THREE.DirectionalLight(0xffffff, 0.9);
-fillLight.position.set(-5, 2.5, 6); scene.add(fillLight);
+fillLight.position.set(-2.25, 1.125, 2.7);       // было (-5, 2.5, 6) · 0.45
+scene.add(fillLight);
 
 const shadowCatcher = new THREE.Mesh(
-  new THREE.PlaneGeometry(40, 40),
+  new THREE.PlaneGeometry(18, 18),               // было 40 × 40 · 0.45
   new THREE.ShadowMaterial({ color: 0x2c7fb6, opacity: 0.18 })
 );
 shadowCatcher.rotation.x = -Math.PI / 2;
@@ -269,7 +304,7 @@ for (const side of [-1, 1]) {
   addLimb(hip, L.thigh, P.r.thighTop, P.r.thighBot, M.olive);
   addTo(shn, SPH(P.r.knee), M.olive, 0, 0, 0);
   addLimb(shn, L.shin, P.r.shinTop, P.r.shinBot, M.olive);
-  addTo(ft, SPH(P.r.shinBot + 0.01, 18, 14), M.puffer, 0, 0, 0);
+  addTo(ft, SPH(P.r.shinBot + 0.0045, 18, 14), M.puffer, 0, 0, 0);
 
   const S = P.shoe;
   const yBase = -P.y.ankle;
@@ -288,7 +323,7 @@ for (const side of [-1, 1]) {
 
   for (let i = 0; i < S.lace.count; i++) {
     addTo(ft, BOX(S.lace.w, S.lace.h, S.lace.d), M.lime,
-          0, yBase + S.soleH + upperH - 0.03,
+          0, yBase + S.soleH + upperH - 0.0135,
           S.lace.startZ + i * S.lace.spread);
   }
 }
@@ -300,7 +335,7 @@ for (const [yB, yT, rB, rT, key] of P.torso) {
   const [yB, yT, r] = P.torsoLimeY;
   addTorsoSection(b.chest, yB, yT, r, r, M.lime, P.y.chest);
 }
-addTo(b.neck, CYL(P.r.neckTop, P.r.neckBot, 0.40), M.skin, 0, 0, 0);
+addTo(b.neck, CYL(P.r.neckTop, P.r.neckBot, 0.18), M.skin, 0, 0, 0);
 
 {
   const H = P.torsoHood;
@@ -323,7 +358,7 @@ function torsoRadius(y) {
 {
   const Z = P.zipper;
   for (let y = Z.yFrom; y <= Z.yTo; y += Z.step) {
-    addTo(b.chest, BOX(...Z.size), M.lime, 0, y - P.y.chest, torsoRadius(y) - 0.008);
+    addTo(b.chest, BOX(...Z.size), M.lime, 0, y - P.y.chest, torsoRadius(y) - 0.0036);
   }
 }
 {
@@ -344,28 +379,28 @@ for (const side of [-1, 1]) {
 
   addTo(up, SPH(P.r.shoulder), M.puffer, 0, 0, 0);
   addLimb(up, L.upperArm, P.r.upperArmTop, P.r.upperArmBot, M.puffer);
-  const band1 = addTo(up, TOR(P.r.upperArmTop - 0.005, 0.028), M.lime,
+  const band1 = addTo(up, TOR(P.r.upperArmTop - 0.00225, 0.0126), M.lime,
                       0, -L.upperArm * 0.30, 0);
   band1.rotation.x = Math.PI / 2;
 
   addTo(fo, SPH(P.r.elbow), M.puffer, 0, 0, 0);
   addLimb(fo, L.foreArm, P.r.foreArmTop, P.r.foreArmBot, M.puffer);
-  const band2 = addTo(fo, TOR(P.r.foreArmBot + 0.005, 0.034), M.lime,
+  const band2 = addTo(fo, TOR(P.r.foreArmBot + 0.00225, 0.0153), M.lime,
                       0, -L.foreArm * 0.75, 0);
   band2.rotation.x = Math.PI / 2;
 
   addTo(hd, SPH(P.r.hand), M.skin, 0, 0, 0);
 }
 
-addTo(b.head, new RoundedBoxGeometry(...P.r.head, 6, 0.18), M.skin, 0, 0, 0);
-addTo(b.head, new RoundedBoxGeometry(...P.r.hair, 8, 0.14), M.hair,
+addTo(b.head, new RoundedBoxGeometry(...P.r.head, 6, 0.081), M.skin, 0, 0, 0);
+addTo(b.head, new RoundedBoxGeometry(...P.r.hair, 8, 0.063), M.hair,
       0, P.face.hairY, P.face.hairZ);
 
 b.eyeL = new THREE.Group(); b.eyeL.position.set(-P.face.eyeX, P.face.eyeY, 0); b.head.add(b.eyeL);
 b.eyeR = new THREE.Group(); b.eyeR.position.set( P.face.eyeX, P.face.eyeY, 0); b.head.add(b.eyeR);
 for (const grp of [b.eyeL, b.eyeR]) {
   addTo(grp, SPH(P.r.eye, 22, 16), M.white, 0, 0, P.face.eyeZ);
-  const pupil = addTo(grp, CYL(P.r.pupil, P.r.pupil, 0.05, 18), M.ink,
+  const pupil = addTo(grp, CYL(P.r.pupil, P.r.pupil, 0.0225, 18), M.ink,
                       0, 0, P.face.pupilZ);
   pupil.rotation.x = Math.PI / 2;
   addTo(grp, TOR(P.r.irisR, P.r.irisT, 10, 26), M.lime, 0, 0, P.face.irisZ);
@@ -384,10 +419,6 @@ for (const s of [-1, 1]) {
 
 /* ============================================================
    СИСТЕМА ПОЗ
-   ============================================================
-   Поза — плоский объект из 33 чисел. Все углы — локальные
-   вращения костей. Стопа хранится тоже локально (мировая
-   ориентация вычисляется в самой позе через компенсацию).
    ============================================================ */
 function emptyPose() {
   return {
@@ -458,7 +489,7 @@ function poseIdle(t) {
   const hip = 0.02, knee = 0.03;
   p.hipLX = hip; p.hipRX = hip;
   p.shinLX = knee; p.shinRX = knee;
-  p.footLX = -hip - knee;   // мировой угол = 0
+  p.footLX = -hip - knee;
   p.footRX = -hip - knee;
 
   p.upLX = 0.02; p.upLZ = -0.10;
@@ -489,13 +520,11 @@ function poseGait(t, cfg, isRun) {
   p.hipLX = hipL;
   p.hipRX = hipR;
 
-  // +π → максимум сгиба на mid-swing (перенос ноги вперёд)
   const kneeL = kneeOf(phL + Math.PI, cfg.kneeAmp, cfg.baseKnee);
   const kneeR = kneeOf(phR + Math.PI, cfg.kneeAmp, cfg.baseKnee);
   p.shinLX = kneeL;
   p.shinRX = kneeR;
 
-  // Стопа: задаём мировой угол, вычитаем накопленный наклон цепочки
   const rollL = Math.sin(phL) * cfg.footRoll;
   const rollR = Math.sin(phR) * cfg.footRoll;
   p.footLX = rollL - (hipLean + hipL) - kneeL;
@@ -554,13 +583,15 @@ function poseJump(phase) {
     armX   = 1.70 - arc * 0.40;
     chestX = -0.10 + arc * 0.12;
   } else if (phase < 0.88) {
+    // ЛЕНДИНГ: стартуем ровно с позы в конце airborne, чтобы не было
+    // скачка bodyY/hip/knee/arm — иначе персонаж «отскакивает» в пик дуги.
     const k = (phase - 0.72) / 0.16, e = k * k;
-    bodyY  = 0.78 * (1 - e) - 0.15 * e;
-    hip    = -0.28 * e;
-    knee   =  0.85 * e;
-    worldFootTarget = 0.25 * (1 - e);
-    armX   = 1.30 * (1 - e) - 0.70 * e;
-    chestX = 0.02 * (1 - e) + 0.26 * e;
+    bodyY  =  0.06  * (1 - e) - 0.15 * e;
+    hip    =  0.30  * (1 - e) - 0.28 * e;
+    knee   =  0.05  * (1 - e) + 0.85 * e;
+    worldFootTarget = 0.35 * (1 - e);
+    armX   =  1.70  * (1 - e) - 0.70 * e;
+    chestX = -0.10  * (1 - e) + 0.26 * e;
   } else {
     const k = (phase - 0.88) / 0.12;
     const e = 1 - (1 - k) * (1 - k);
@@ -635,14 +666,14 @@ function startJump() {
 }
 
 /* ============================================================
-   ДЫХАНИЕ / МОРГАНИЕ (аддитивно поверх любой позы)
+   ДЫХАНИЕ / МОРГАНИЕ
    ============================================================ */
 function applyBreath(t) {
   const br = Math.sin(t * 1.6) * 0.5 + 0.5;
   b.chest.scale.y = 1 + br * 0.025;
   b.chest.rotation.x += br * 0.018;
   b.neck.rotation.x  += br * 0.010;
-  b.body.position.y  += br * 0.006;
+  b.body.position.y  += br * 0.0027;             // было 0.006 · 0.45
 }
 
 const blink = { nextAt: 1.5 + Math.random() * 3, startAt: -1, duration: 0.14 };
@@ -686,11 +717,9 @@ function animateCharacter(t, dt) {
     jumpT += dt;
     const phase = Math.min(1, jumpT / JUMP_DUR);
 
-    // Базовая поза — та, в которую мы вернёмся.
     const basePose = computePoseFor(prevState, prevVariant, t);
     const jumpPose = poseJump(phase);
 
-    // Плавный вход и выход: вес jumpPose = 0 на концах, 1 в середине.
     const wIn  = smoothstep(0, BLEND_IN, jumpT);
     const wOut = smoothstep(0, BLEND_OUT, JUMP_DUR - jumpT);
     const w = Math.min(wIn, wOut);
