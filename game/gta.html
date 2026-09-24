@@ -173,6 +173,7 @@
 <script src="../assets/models/tree.js"></script>
 <script src="../assets/models/streetlight.js"></script>
 <script src="../assets/models/park.js"></script>
+<script src="../assets/models/road.js"></script>
 <script src="../assets/vehicles.js"></script>
 
 <script type="importmap">
@@ -303,9 +304,8 @@ function makeGroundTexture(){
   x.fillStyle='#3a4638';x.fillRect(0,0,1024,1024);
   for(let i=0;i<9000;i++){const px=rng()*1024,py=rng()*1024;x.fillStyle=`rgba(${rng()<.5?70:36},${rng()<.5?86:52},40,.05)`;x.fillRect(px,py,2,2);}
   x.fillStyle='#2b2f34';for(let i=0;i<=GRID;i++){const p=i*cellPx;x.fillRect(p-roadPx/2,0,roadPx,1024);x.fillRect(0,p-roadPx/2,1024,roadPx);}
-  const dash=(a,b,c2,d)=>{x.strokeStyle='rgba(238,216,150,.7)';x.lineWidth=2;x.setLineDash([9,11]);x.beginPath();x.moveTo(a,b);x.lineTo(c2,d);x.stroke();};
-  for(let i=0;i<=GRID;i++){const p=i*cellPx;dash(p,0,p,1024);dash(0,p,1024,p);}
-  x.setLineDash([]);
+  // Разметка (штрихи) убрана — теперь отдельными InstancedMesh в MeridianRoadKit.
+  // Цикл 9000 итераций выше не тронут: rng-поток контрактный (README.md §4).
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;
 }
 
@@ -325,19 +325,11 @@ function isRoad(x,z){return Math.abs(((x+HALF)%CELL))<ROAD/2||Math.abs(((z+HALF)
 
 /* ---------- ground + roads ---------- */
 function buildGround(){
-  // The plane is bigger than the painted map (see GROUND_APRON); pulling the UVs back to the inner
-  // WORLD square keeps every road and dash line at its true world position, while ClampToEdge stretches
-  // the border column outward — which happens to be asphalt exactly where a cross-street leaves the map.
-  const S=WORLD+GROUND_APRON*2;
-  const g=new THREE.PlaneGeometry(S,S);g.rotateX(-Math.PI/2);
-  const uv=g.attributes.uv;
-  // Scale UVs so the inner WORLD square (x:±HALF) maps to UV [0,1].
-  // Plane UV goes 0→1 for x:-S/2→S/2.  x=±HALF → uv = (S/2∓HALF)/S.
-  // Target: uv' = (uv - uv_min) / (uv_max - uv_min) = (uv*S - GROUND_APRON) / WORLD
-  for(let i=0;i<uv.count;i++){uv.setXY(i,(uv.getX(i)*S-GROUND_APRON)/WORLD,(uv.getY(i)*S-GROUND_APRON)/WORLD);}
-  uv.needsUpdate=true;
-  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({map:groundTex,roughness:.96}));
-  scene.add(m);
+  MeridianRoadKit.buildAll({
+    THREE, geom, scene, groundTex,
+    grid: GRID, cell: CELL, road: ROAD, sidewalk: SIDEWALK,
+    half: HALF, apron: GROUND_APRON,
+  });
 }
 
 /* ---------- buildings ---------- */
