@@ -57,3 +57,4 @@ $RECYCLE.BIN/
 *.lnk
 upgrade.sh
 1.sh
+*.sh

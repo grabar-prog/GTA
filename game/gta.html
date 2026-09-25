@@ -307,6 +307,12 @@ const solidMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.92,m
 const distantCityMat=new THREE.MeshStandardMaterial({
   vertexColors:true, roughness:.92, metalness:.04,
 });
+
+// Парки используют свой материал (не подсвечивается ночью — в парке
+// не горит свет, как в окнах домов). solidMat оставлен для зданий.
+const parkMat=new THREE.MeshStandardMaterial({
+  vertexColors:true, roughness:.86, metalness:.04,
+});
 // Оконный материал — отдельный, потому что vertex colors Three.js
 // работают через diffuse, а нам нужно, чтобы окна горели сильнее стен.
 // Два меша на здание (building.js создаёт оба) дают именно этот эффект.
@@ -362,7 +368,29 @@ function addBuilding(cx,cz,w,d,h){
 function buildCity(){
   for(let i=0;i<GRID;i++)for(let j=0;j<GRID;j++){
     const cx=-HALF+i*CELL+CELL/2, cz=-HALF+j*CELL+CELL/2;
-    if(i===4&&j===5){buildPark(cx,cz);continue;}
+    // Слоты парков в сетке GRID×GRID. Каждый занимает один квартал.
+    // Менять здесь: [i, j], i по X, j по Z. Значения — центр квартала.
+    // Проверять, что слот не пересекается с самим собой и не выходит за GRID.
+    const PARK_SLOTS = [
+      [4, 5],   // центр — plaza/monument
+      [4, 2],   // север
+      [4, 8],   // юг
+      [1, 5],   // запад
+      [7, 5],   // восток
+    ];
+    let isPark = false;
+    for (let k = 0; k < PARK_SLOTS.length; k++) {
+      if (i === PARK_SLOTS[k][0] && j === PARK_SLOTS[k][1]) { isPark = true; break; }
+    }
+    if (isPark) {
+      buildPark(cx, cz);
+      // Если нужно сохранить прежний rng-поток города (см. --keep-rng):
+      // в обычной ячейке ниже тратятся два вызова rng(); в ячейке-парке
+      // их нет. Два пустых вызова выравнивают поток, чтобы дома и трафик
+      // встали как раньше.
+      if (0) { rand(-0.2, 0.2); rng(); }
+      continue;
+    }
     const dist=Math.hypot(cx,cz)/HALF;
     const central=1-dist;
     let h=lerp(9,78,Math.pow(clamp(central+rand(-.2,.2),0,1),1.35));
@@ -393,12 +421,17 @@ function buildDistantCity(){
 }
 
 function buildPark(cx,cz){
-  const positions = MeridianParkKit.add({
-    THREE, scene, cx, cz,
+  const res = MeridianParkKit.add({
+    THREE, geom, scene,
+    cx, cz,
     size: CELL-ROAD-4,
-    rng,
+    material: parkMat,
+    worldHalf: HALF,
+    // Парк по умолчанию использует ЛОКАЛЬНЫЙ mulberry32: rng-поток города
+    // не сдвигается от смены состава парка. Прежний контракт (52 вызова
+    // основного rng) доступен флагом useMainRng: true.
   });
-  for (const t of positions) addTree(t.x, t.z);
+  for (const t of res.trees) addTree(t.x, t.z);
 }
 
 /* ---------- trees (instanced) ---------- */

@@ -81,10 +81,19 @@ controls.enableDamping = true; controls.dampingFactor = 0.08;
 scene.add(new THREE.HemisphereLight(0xdfe9f4, 0x2a2f36, 2.0));
 const key = new THREE.DirectionalLight(0xffffff, 2.4);
 key.position.set(5, 8, 6); key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-Object.assign(key.shadow.camera, { near: 0.5, far: 40, left: -12, right: 12, top: 12, bottom: -12 });
+// 1024×1024 достаточно: модели небольшие, а shadow pass дешевеет вчетверо.
+key.shadow.mapSize.set(1024, 1024);
+Object.assign(key.shadow.camera, { near: 0.5, far: 60, left: -30, right: 30, top: 30, bottom: -30 });
 key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
 scene.add(key);
+
+// Тени в viewer пересчитываются только когда что-то меняется: сцена
+// статична, кроме анимации hero, поэтому autoUpdate выключен. Флаг
+// shadowNeedsRefresh поднимается при смене модели и с некоторой
+// периодичностью внутри tick — этого достаточно, чтобы hero при ходьбе
+// отбрасывал живую тень, а статичные модели не гоняли shadow map зря.
+renderer.shadowMap.autoUpdate = false;
+let shadowNeedsRefresh = true;
 const rim = new THREE.DirectionalLight(0x5fd0ff, 0.6); rim.position.set(-6, 3, -7); scene.add(rim);
 
 const grid = new THREE.GridHelper(40, 40, 0x2a3a4a, 0x1a2530);
@@ -106,13 +115,28 @@ const notesEl  = document.getElementById('notes');
 
 let current = null;
 
-function clearCurrent() {
-  if (!current) return;
-  scene.remove(current);
-  current.traverse(o => {
-    if (o.geometry && o.geometry.dispose) o.geometry.dispose();
-    if (o.material && o.material.dispose) o.material.dispose();
-  });
+// Небольшой LRU-кеш готовых превью. Переключение A → B → A перестаёт
+// пересобирать геометрию и перекомпилировать шейдеры.
+const PREVIEW_CACHE_MAX = 4;
+const previewCache = new Map();   // id → { obj, entry }
+
+function touchCache(id, item) {
+  if (previewCache.has(id)) previewCache.delete(id);
+  previewCache.set(id, item);
+  while (previewCache.size > PREVIEW_CACHE_MAX) {
+    const oldestKey = previewCache.keys().next().value;
+    const old = previewCache.get(oldestKey);
+    scene.remove(old.obj);
+    old.obj.traverse(o => {
+      if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+      if (o.material && o.material.dispose) o.material.dispose();
+    });
+    previewCache.delete(oldestKey);
+  }
+}
+
+function detachCurrent() {
+  if (current && current.parent) current.parent.remove(current);
   current = null;
 }
 
@@ -134,13 +158,28 @@ function populateAnimations(obj) {
 }
 
 function show(id) {
-  clearCurrent();
+  detachCurrent();
   const entry = MeridianAssets.get(id);
   if (!entry) return;
-  const obj = entry.makePreview(ctx);
-  obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  scene.add(obj);
+
+  // Кеш: если эта модель уже строилась — просто переприкрепляем её к сцене.
+  const cached = previewCache.get(id);
+  let obj;
+  if (cached) {
+    obj = cached.obj;
+    scene.add(obj);
+    touchCache(id, cached);
+  } else {
+    const t0 = performance.now();
+    obj = entry.makePreview(ctx);
+    obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(obj);
+    touchCache(id, { obj, entry });
+    const ms = (performance.now() - t0).toFixed(0);
+    if (ms > 20) console.log('[viewer]', id, 'built in', ms, 'ms');
+  }
   current = obj;
+  shadowNeedsRefresh = true;
   populateAnimations(obj);
 
   // вписать в кадр
@@ -186,12 +225,26 @@ addEventListener('resize', () => {
 
 /* ---------- цикл ---------- */
 const clock = new THREE.Clock();
+let tickCounter = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(0.05, clock.getDelta());
   const t  = clock.getElapsedTime();
+
+  let animated = false;
   if (current && current.userData && typeof current.userData.tick === 'function') {
     current.userData.tick(t, dt);
+    animated = true;
   }
+
+  // Тень: перерисовать один раз при смене модели, и ещё раз в 3-м кадре
+  // из каждых 3 при активной анимации (hero/walk). Статичные модели
+  // вообще не трогают shadow map.
+  tickCounter++;
+  if (shadowNeedsRefresh || (animated && (tickCounter % 3) === 0)) {
+    renderer.shadowMap.needsUpdate = true;
+    shadowNeedsRefresh = false;
+  }
+
   controls.update();
   renderer.render(scene, camera);
 });
