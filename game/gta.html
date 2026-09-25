@@ -225,7 +225,11 @@ const WORLD=GRID*CELL, HALF=WORLD/2;
 // semi-trailer sticks half its length past the border for a moment; without extra ground under it that
 // read as a lorry floating over nothing. The road texture is UV-shrunk to the inner WORLD square (see
 // buildGround), so the apron stretches out of the map edge as road tongues + verge, not as a seam.
-const GROUND_APRON=ROAD/2+2;
+// Ширина полосы асфальта, тянущегося ЗА игровой картой. Крайние полосы
+// groundTex теперь запекают градиент к цвету тумана (см. makeGroundTexture),
+// поэтому «дорога в никуда» плавно растворяется. HALF+GROUND_APRON —
+// внутренний край дальнего силуэта-кольца в buildDistantCity.
+const GROUND_APRON=60;
 const DAY_LEN=170;                 // seconds per full day cycle
 const WALK=4.6, SPRINT=9.6;
 const PLAYER_R=0.5;                  // collision radius of the walker
@@ -254,7 +258,13 @@ function initRenderer(){
 
   scene=new THREE.Scene();
   fogColor.set(0x9fb6c8);
-  scene.fog=new THREE.Fog(fogColor.getHex(),70,340);
+  // near/far подобраны под HALF=290: до края мира туман гасит силуэты
+  // башен, а дальний силуэт-кольцо (buildDistantCity) добивает горизонт.
+  // near/far подобраны под HALF=290: силуэт реальных башен гаснет к 200 м,
+// дальнее кольцо (buildDistantCity) растворяется в тон же за 40 м до него.
+// Плотнее, чем 40/240, дальний силуэт становится «бумажным» пятном.
+// DARKER — плотнее и ближе: silhouette реальных башен гаснет уже к 140 м.
+scene.fog=new THREE.Fog(fogColor.getHex(),20,140);
 
   camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,0.1,1500);
   camera.position.set(0,6,-12);
@@ -306,6 +316,25 @@ function makeGroundTexture(){
   x.fillStyle='#2b2f34';for(let i=0;i<=GRID;i++){const p=i*cellPx;x.fillRect(p-roadPx/2,0,roadPx,1024);x.fillRect(0,p-roadPx/2,1024,roadPx);}
   // Разметка (штрихи) убрана — теперь отдельными InstancedMesh в MeridianRoadKit.
   // Цикл 9000 итераций выше не тронут: rng-поток контрактный (README.md §4).
+  // Периферийный градиент к цвету тумана. В UV-пространстве игровая карта
+  // занимает [apron/S, (WORLD+apron)/S] с каждой стороны (см. buildBackground);
+  // крайние пиксели текстуры ClampToEdge тянет дальше — поэтому именно они
+  // должны быть цвета тумана. Ширина полосы — APRON_FRAC от каждой стороны.
+  const APRON_FRAC=0.085;                              // ~60/700 при GROUND_APRON=60
+  const EDGE_PX=Math.round(1024*APRON_FRAC);
+  // DARKER — цвет градиента согласован с новым fogColor (0x4a6d96 ≈ 74,109,150);
+  // если оставить старый, кромка текстуры светилась бы светлее тумана.
+  const APRON_FOG_HEX='74,109,150';
+  const grad=(x0,y0,x1,y1,rx,ry,rw,rh,flip)=>{
+    const gr=x.createLinearGradient(x0,y0,x1,y1);
+    gr.addColorStop(0,'rgba('+APRON_FOG_HEX+','+(flip?0:1)+')');
+    gr.addColorStop(1,'rgba('+APRON_FOG_HEX+','+(flip?1:0)+')');
+    x.fillStyle=gr;x.fillRect(rx,ry,rw,rh);
+  };
+  grad(0,0,EDGE_PX,0,                         0,0,EDGE_PX,1024,false);
+  grad(1024-EDGE_PX,0,1024,0,                 1024-EDGE_PX,0,EDGE_PX,1024,true);
+  grad(0,0,0,EDGE_PX,                         0,0,1024,EDGE_PX,false);
+  grad(0,1024-EDGE_PX,0,1024,                 0,1024-EDGE_PX,1024,EDGE_PX,true);
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;return t;
 }
 
@@ -313,7 +342,33 @@ function makeGroundTexture(){
 let facadeTex,winTex,groundTex;
 // Every building shell is merged into one mesh and painted through vertex colours, so the whole
 // skyline shares a single material instead of ~12 meshes (and 12 draw calls) per tower.
-const solidMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.92,metalness:.04});
+// Тёплый emissive без карты: vertex colors работают по diffuse, не по
+// emissive, поэтому светится одинаково вся поверхность. Низкая интенсивность
+// (см. updateCycle) даёт мягкое «город светится» ночью и не выглядит как
+// залитые светом стены. Если нужны именно яркие окна, отдельно от стен —
+// building.js должен вернуть две geometry (walls/windows) и add() соберёт
+// два меша с разными материалами.
+const solidMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.92,metalness:.04,
+  emissive:0xffb86b,emissiveIntensity:0});
+// Оконный материал — отдельный, потому что vertex colors Three.js
+// работают через diffuse, а нам нужно, чтобы окна горели сильнее стен.
+// Два меша на здание (building.js создаёт оба) дают именно этот эффект.
+const buildingGlassMat=new THREE.MeshStandardMaterial({
+  color:0x10171f,
+  emissive:0xffd090,
+  emissiveIntensity:0,
+  roughness:0.22,
+  metalness:0.35,
+});
+// Окна, которые не горят. Тёмное стекло без эмиссии. Днём lit и dark
+// выглядят почти одинаково (светло-серый отражённый от неба), ночью
+// lit загорается, dark остаётся тёмным — это и создаёт «узор» из
+// освещённых окон, а не сплошной светящийся фасад.
+const buildingGlassDarkMat=new THREE.MeshStandardMaterial({
+  color:0x1a2028,
+  roughness:0.35,
+  metalness:0.45,
+});
 const glassMat=new THREE.MeshStandardMaterial({color:0xffffff,map:null,emissive:0xffb86b,emissiveMap:null,emissiveIntensity:0,roughness:.28,metalness:.5});
 // BODY_HEXES/ROOF_HEX/TRIM_HEX переехали в assets/models/building.js.
 
@@ -342,8 +397,9 @@ function buildGround(){
 function addBuilding(cx,cz,w,d,h){
   MeridianBuildingKit.add({
     THREE, geom, scene,
-    materials: { solid: solidMat, glass: glassMat },
+    materials: { solid: solidMat, glass: buildingGlassMat, glassDark: buildingGlassDarkMat },
     cx, cz, w, d, h, rng, buildings,
+    worldHalf: HALF,
   });
 }
 function buildCity(){
@@ -367,6 +423,66 @@ function buildCity(){
 }
 
 /* ---------- park ---------- */
+/* ---------- distant city silhouette (ring beyond the playable edge) ------
+   Периферия — не пустая пропасть, а силуэт продолжающегося города.
+   ~240 низкополигональных коробок в полосе HALF+25 … HALF+130 с каждой
+   стороны, слитые в ОДИН mesh. Окон/теней/коллизий нет: задача — держать
+   горизонт занятым, когда fog.far=240 гасит настоящие башни в центре.
+   Основание — четыре широкие плиты в полосе HALF+GROUND_APRON … OUTER, чтобы
+   силуэты не висели на голубом низком небе.
+
+   rng локальный (mulberry32), основной поток не трогаем — иначе перестроится
+   весь город (README.md §4). */
+function buildDistantCity(){
+  let a=0x51de77|0;
+  const rngD=()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const randD=(lo,hi)=>lo+(hi-lo)*rngD();
+
+  const parts=[];
+  const ringIn=HALF+GROUND_APRON;
+  const INNER=ringIn+10, OUTER=ringIn+130;
+  const PER_SIDE=60;
+  // Своя палитра, в 2.5 раза темнее BODY_HEXES: те же коробки, но без окон,
+  // теней и подсветки — если оставить светлые тона, силуэт читается как
+  // «бумажные кубы» на фоне неба. Тёмные hex'ы сливаются с туманом.
+  // DARKER — ещё темнее: на дневном тумане светлые hex'ы читались
+  // как «бумажные коробки». Теперь чуть темнее самого тумана.
+  const DISTANT_HEXES=[0x1a2634,0x141c28,0x22303e,0x0f1620,0x1d2734,0x243040];
+  const pickHex=()=>DISTANT_HEXES[(rngD()*DISTANT_HEXES.length)|0];
+
+  // Основание: кольцо из четырёх плит, начинается ровно там, где кончается
+  // игровая земля (HALF + GROUND_APRON), и тянется до OUTER.
+  const ringW =OUTER-ringIn;
+  const ringC =ringIn+ringW/2;
+  parts.push({geo:new THREE.BoxGeometry(OUTER*2,0.15,ringW).translate(0,0.075, ringC),color:0x0d1218});
+  parts.push({geo:new THREE.BoxGeometry(OUTER*2,0.15,ringW).translate(0,0.075,-ringC),color:0x0d1218});
+  parts.push({geo:new THREE.BoxGeometry(ringW,0.15,OUTER*2).translate( ringC,0.075,0),color:0x0d1218});
+  parts.push({geo:new THREE.BoxGeometry(ringW,0.15,OUTER*2).translate(-ringC,0.075,0),color:0x0d1218});
+
+  // 4 стороны × 60 коробок. along — вдоль края, depth — от HALF+25 до OUTER.
+  for(let side=0;side<4;side++){
+    for(let i=0;i<PER_SIDE;i++){
+      const along=randD(-HALF,HALF);
+      const depth=randD(INNER,OUTER);
+      let x,z;
+      if(side===0){x= along;z= depth;}
+      else if(side===1){x= along;z=-depth;}
+      else if(side===2){x= depth;z= along;}
+      else            {x=-depth;z= along;}
+
+      const w=randD(12,32), d=randD(12,32), h=randD(10,70);
+      const g=new THREE.BoxGeometry(w,h,d);
+      g.translate(x,h/2,z);
+      parts.push({geo:g,color:pickHex()});
+    }
+  }
+
+  const mesh=new THREE.Mesh(mergeGeometries(parts),solidMat);
+  mesh.castShadow=false;mesh.receiveShadow=false;
+  mesh.frustumCulled=false;   // один mesh на весь горизонт — куллинг только мешает
+  scene.add(mesh);
+}
+
 function buildPark(cx,cz){
   const positions = MeridianParkKit.add({
     THREE, scene, cx, cz,
@@ -599,7 +715,22 @@ function buildSky(){
 }
 
 /* ---------- day / night cycle ---------- */
-const SKY={day:{top:0x3f7fd6,bot:0xbcd8ee},dusk:{top:0x2a3560,bot:0xff9a4c},night:{top:0x060b1e,bot:0x141d33}};
+// Нижний цвет неба чуть притемнён: bot читается у горизонта, где стоит
+// дальнее кольцо — если он слишком светлый, силуэт выглядит бумажным.
+// DARKER — нижний цвет неба притемнён ещё сильнее: именно он через
+// fogColor.copy(_b) красит туман, и его светлые тона давали «молочный»
+// горизонт. Верх оставлен ярче, чтобы день читался как день.
+// SKY day top rebalanced — верх дневного неба светлый (зенит читается как
+// день), низ остаётся тёмным: именно он через fogColor.copy(_b) красит
+// туман, поэтому горизонт и дальний силуэт сохраняют глубину.
+// day.bot намеренно темнее day.top в ~3 раза — это даёт мягкий градиент
+// к горизонту вместо прежней «белой стены» у края мира.
+// SKY — day.top подобран так, чтобы зенит читался как ясный полдень
+// (0x7fb8ea ≈ светло-голубой), но горизонт (day.bot) остаётся тёмным:
+// именно он через fogColor.copy(_b) красит туман и дальний силуэт.
+// Если верх всё ещё тёмный — двигай day.top к 0x9fcdf2; если через-
+// мерно светлый — назад к 0x6aa4dc.
+const SKY={day:{top:0x7fb8ea,bot:0x4a6d96},dusk:{top:0x3a4a78,bot:0x8a4520},night:{top:0x060c24,bot:0x060a14}};
 const _t=new THREE.Color(),_b=new THREE.Color();
 let dayTime=8/24; // start morning
 function updateCycle(dt){
@@ -612,7 +743,9 @@ function updateCycle(dt){
   else{const k=smoothstep(0,-0.4,elev);_t.setHex(SKY.dusk.top).lerp(new THREE.Color(SKY.night.top),k);_b.setHex(SKY.dusk.bot).lerp(new THREE.Color(SKY.night.bot),k);}
   skyMat.uniforms.topColor.value.copy(_t);skyMat.uniforms.bottomColor.value.copy(_b);
 
-  fogColor.copy(_b).multiplyScalar(0.92);scene.fog.color.copy(fogColor);renderer.setClearColor(fogColor,1);
+  // DARKER — раньше множитель 0.92 почти не притемнял туман относительно
+// нижнего цвета неба; теперь туман заметно темнее и силуэты глубже.
+fogColor.copy(_b).multiplyScalar(0.55);scene.fog.color.copy(fogColor);renderer.setClearColor(fogColor,1);
   hemi.intensity=lerp(0.75,0.14,night);hemi.color.copy(_t);
 
   const dir=new THREE.Vector3(sunX,sunY,0.28).normalize();
@@ -626,6 +759,12 @@ function updateCycle(dt){
 
   stars.material.opacity=smoothstep(0.05,-0.1,elev)*0.9;
   glassMat.emissiveIntensity=night*1.7;
+  // Здания: 0.06 — мягкий тёплый отсвет, читается как «город светится».
+  // 0.15 и выше начнёт резать глаз на тёмных фасадах; 0.02 — почти незаметно.
+  // Стены — почти не светятся, только тёплый отсвет от освещения.
+  solidMat.emissiveIntensity=night*0.02;
+  // Окна — горят сами. 1.4 — как фасадные стёкла в старом shell'е.
+  buildingGlassMat.emissiveIntensity=night*1.4;
   // Фары и задние габариты. headMat зажигается только ночью, tailMat чуть
   // теплится и днём — как габаритный огонь. Стоп-сигналы отдельно, через
   // brakeMesh в writeCarInstances().
@@ -1289,7 +1428,7 @@ async function boot(){
   glassMat.map=facadeTex;glassMat.emissiveMap=winTex;
   groundTex=makeGroundTexture();await step(24,'Painting facades & asphalt…');
   buildSky();buildGround();await step(38,'Raising the skyline…');
-  buildCity();await step(60,'Placing '+buildings.length+' buildings…');
+  buildCity();buildDistantCity();await step(60,'Placing '+buildings.length+' buildings…');
   buildTrees();await step(72,'Planting '+trees.length+' trees…');
   buildStreetlights();await step(82,'Wiring streetlights…');
   buildCars();buildHeadlightPool();buildPeds();buildCharacter();await step(94,'Spawning traffic & crowds…');
