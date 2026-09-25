@@ -6,8 +6,7 @@ them. Line numbers drift — locate symbols with `grep -n` in the game file.
 
 ## Geometry merging is the entire budget
 
-- **Building** = 2 meshes: a shell with vertex colours plus one glazing mesh shared by a 2×2 block cluster —
-  instead of ~12 per building.
+- *(amended )* **Building** = 3 meshes: shell (vertex colours), lit glass (bright emissive, ~40 % of windows), dark glass (no emissive). The split is what makes windows glow on their own while walls stay neutral — `vertexColors` in Three.js only affect `diffuse`, not `emissive`, so one material cannot do both. The old 2-mesh description (shell + one shared glazing plane) is history.
 - **Vehicle** = 1 merged body mesh; wheels and headlight/lens pairs are shared `InstancedMesh`es across the whole
   park (**52 bodies + 4 instanced meshes instead of ~90 boxes**).
 - **Bus** = one merged mesh including windows and doors. **Semi** = cab + trailer merged, with double wheels

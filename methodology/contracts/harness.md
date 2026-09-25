@@ -6,6 +6,9 @@
 
 ## Rules — read always
 
+> **DRIFT NOTICE 2026-09-25.** The reference numbers in this file were measured at `cf4c702` — before the assets split (geom/asset-registry/day-cycle/traffic-ai + `assets/models/*`), before `CAR_COUNT_BASE / CAR_COUNT_MAX` and the density-based traffic multiplier ([traffic-lanes.md](traffic-lanes.md) C-LANE-6, amended), before `GROUND_APRON` grew from 10 to 60 (world-constants.md, amended), and before the building and park generators were replaced. The 23 checks themselves are unchanged — the numbers they print are not. **Re-run `node harness/check-city.js` from the repo root and paste the new reference blob here before trusting any threshold in the table below.** The drift is expected: the seeded RNG is contractual, so every rng-order change moves every downstream count.
+
+
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
 - **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 23/23 PASS, exit 0, wall time ≈24.6 s under SwiftShader (generation alone 7.73 s).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.

@@ -10,7 +10,7 @@ All values are read from `game/gta.html` (trust names, not line offsets). Changi
 - **C-WLD-2** Pedestrians spawn only on interior lines too, offset toward the pavement by `ROAD/2 + 1.8`.
 - **C-WLD-3** A border clamp must never flip axis: a pedestrian pushed off-course is hard-clamped to `±PED_LIMIT` and must not `p.axis ^= 1` — that made crowds walk diagonally through buildings and then off the map.
 - **C-WLD-4** Vehicles wrap at `CAR_LIMIT`, not beyond it; the cross-axis coordinate of any vehicle stays inside `±HALF` for the whole run (`sim.maxCrossAbs ≤ HALF`).
-- **Couplings** `WORLD = GRID*CELL = 580`; `HALF = WORLD/2 = 290`; `CAR_LIMIT = HALF`; `TRACK = CAR_LIMIT*2` (must stay exactly that, or `gapAhead()` lies); `GROUND_APRON = ROAD/2 + 2 = 10`; `PED_LIMIT = HALF - 6 = 284`.
+- **Couplings** *(amended 2026-09-25)* `WORLD = GRID*CELL = 580`; `HALF = WORLD/2 = 290`; `CAR_LIMIT = HALF`; `TRACK = CAR_LIMIT*2` (must stay exactly that, or `gapAhead()` lies); `GROUND_APRON = 60`; `PED_LIMIT = HALF - 6 = 284`. **Amendment reason:** the apron was `ROAD/2 + 2 = 10`, which left a hard edge of asphalt visible past the last painted road; 60 m lets the ground texture fade into the fog (`makeGroundTexture` bakes a gradient to `fogColor` over the outer 8.5 % of the canvas) and pushes the distant-city ring further out (`buildDistantCity` starts at `HALF + GROUND_APRON`). The dependent value is the ground plane size: it is now `WORLD + 2 × 60 = 700`, not 600.
 - **Accepted deviation** Asphalt is painted only inside `±290`, so standing on an outer road line shows a break in the pavement. Deliberately not fixed — remediation cost in [docs/limitations.md](../docs/limitations.md).
 
 Verify: harness checks 6–12 (`spawn.onBorderLine === 0`, `spawn.outsideGroundNow === 0`, `spawn.maxLaneOffsetErr < 1e-6`, `sim.offRoadSamples === 0`) and check 18 for the apron. Every vehicle must sit at an offset of exactly `ROAD/4` from its lane centre.
@@ -49,7 +49,7 @@ dayTime  = 8/24                       // 08:00 at load
 
 ### Building heights
 
-`h = lerp(9, 78, (central + rand(-.2,.2))^1.35)`, with a 6 % chance of `×1.4`. `central` grows toward the map centre, so the skyline peaks downtown. Some lots are skipped on purpose — they read as plazas. Reference run: **337 buildings**.
+*(amended 2026-09-25)* Building heights are chosen by type via `MeridianBuildingKit.add()`: `pickType(distFromCenter)` picks among seven silhouettes (cottage → tower) and `pickLevel(h)` picks the size band. The old height lerp and the 6 % ×1.4 spike no longer exist — reference building count and draw-call numbers in [harness.md](harness.md) must be re-measured. Parks are no longer a single slot at `i===4 && j===5`: `PARK_SLOTS` in `game/gta.html` lists the park quarters (five by default — centre, north, south, west, east). `buildDistantCity` adds one merged mesh beyond `HALF + GROUND_APRON`.
 
 ### Road-line indexing (the trap that cost two bug fixes)
 

@@ -177,7 +177,7 @@ for want in 'type="importmap"' \
             'import \* as THREE from' \
             'renderer\.outputColorSpace[[:space:]]*=[[:space:]]*THREE\.SRGBColorSpace' \
             't\.colorSpace[[:space:]]*=[[:space:]]*THREE\.SRGBColorSpace'; do
-  if ! grep -qE "$want" "$GAME"; then echo "  required 0.160 code missing: $want"; fail=1; fi
+  if ! grep -qE "$want" "$GAME" "assets/day-cycle.js"; then echo "  required 0.160 code missing: $want"; fail=1; fi
 done
 
 # (d) the CapsuleGeometry polyfill is gone — native since r140 (C-API-3 retired)

@@ -16,7 +16,7 @@ Exact line numbers drift with every edit — grep for the marker instead.
 | `id="start"` | start screen with the "enter" button (z-index 50) |
 | `id="loader"` | loader progress bar (z-index 80 — must stay above `#start`) |
 | `Booting engine…` | inline **watchdog** classic `<script>`: 4 s timer that surfaces a failed importmap (`boot().catch` never runs when the module import itself fails) |
-| `<script src="../assets/main_person.js">` | hero rig — classic script, not an ES module (`file://` blocks sibling ES-module imports) |
+| `<script src="../assets/geom.js">` … `<script src="../assets/vehicles.js">` | classic asset scripts, all loaded before the module: `geom.js`, `asset-registry.js`, `day-cycle.js`, `models/manifest.js` + `models/_loader.js`, `vehicles.js` — see README.md for the full list |
 | `<script type="importmap">` | `three` / `three/addons/` → `unpkg.com/three@0.160.x` |
 | `<script type="module">` | the entire game: one module, one `<script>` block |
 | `</body></html>` | last two lines |
@@ -43,16 +43,16 @@ Section order inside the module (grep for the marker to locate):
 | `boxAt` `taperBox` `cylX/Z/Y` `sphAt` `capY/X/Z` `ebox` | positioned-primitive factories; each bakes its own `translate()` |
 | `angLerp` | shortest-arc yaw interpolation |
 | `initRenderer` | WebGL context, scene, camera, fog, sun/moon/hemi, shadows, `useLegacyLights` stopgap (C-API-7) |
-| `makeFacadeTexture` `makeWindowEmissive` `makeGroundTexture` | canvas textures, `colorSpace = SRGBColorSpace` (C-API-2) |
+| `dayCycle.makeFacadeTexture` `dayCycle.makeWindowEmissive` `dayCycle.makeGroundTexture` | canvas textures (in `assets/day-cycle.js`), `colorSpace = SRGBColorSpace` (C-API-2) |
 | shared materials & palettes (`solidMat`, `glassMat`, `CAR_COLORS`, `PED_COLORS`) | index by `.length`, never by the array itself (C-API-5) |
 | `isRoad` `buildGround` | ground plane + UV squeeze (`GROUND_APRON`, world-constants) |
 | `addBuilding` `buildCity` `buildPark` `buildTrees` `buildStreetlights` | city generation: 2×2 clusters, one park, 121 poles, a pool of 6 `PointLight`s |
-| `CAR_TYPES` `BUS_TYPES` `TRUCK_TYPES` `DRIVE` `pickVehicleType` | fleet mix + driving profiles |
+| `MeridianTrafficAI.create(...)` | lane following, right-of-way, unstick, headlight pool (in `assets/traffic-ai.js`) |
 | `makeCarGeometry` `makeBusGeometry` `makeSemiGeometry` `makeWheelGeometry` `lightLayout` | one merged buffer per body |
 | `wrapGap` `inBox` `clearOfBox` `buildCars` `vehicleWheels` | fleet spawn, instanced-buffer sizing |
 | `PED_COLORS` `PED_SKIN` `PED_RIG` `PED_LIMIT` `buildPeds` | crowd rig (one `InstancedMesh` per part, C-ANA-1…3) |
 | `buildCharacter` | calls `MainPerson.createHero(...)`, adds the wrapper to `scene` (asset-contract) |
-| `buildSky` `SKY` `updateCycle` | sky shader, palette table, day/night cycle |
+| `dayCycle.buildSky` `dayCycle.update` | sky shader, palette table, day/night cycle (in `assets/day-cycle.js`) |
 | `keys` `setTrafficMult` `mousemove` `collide` `resolveCars` `resolvePeds` | input, HUD traffic scale, collisions |
 | `updatePlayer` | player + chase camera (camera.md C-CAM-1…4) |
 | `leaderAhead` `pathGap` `bodyGap` `bodyGapBehind` `approachLimit` `crossState` `clearance` `roomToClear` `arbitrateCrossings` `unstickCars` `updateCars` `writeCarInstances` | traffic simulation (right-of-way.md) |

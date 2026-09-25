@@ -58,3 +58,11 @@ $RECYCLE.BIN/
 upgrade.sh
 1.sh
 *.sh
+.docs.bak.*
+assets.bak.*
+assets/viewer.html.bak.*
+assets/diagnostic.html.bak.*
+game/gta.html.bak.*
+tools/lint-refs.sh.bak.*
+*.bak.*
+*.run_scripts_logs/
