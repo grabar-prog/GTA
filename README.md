@@ -14,7 +14,7 @@ Open `game/gta.html` in a browser (drag it into the window, or `file:///…/game
 | `W A S D` / arrows | walk |
 | `Shift` | sprint (9.6 m/s vs 4.6 m/s) |
 | `Esc` | release the cursor |
-| `-` `=` `0` | traffic time-scale ×0…×2.5 (step 0.25); the HUD slider only takes input while the cursor is free |
+| `-` `=` `0` | fleet-size multiplier ×0…×2.5 (step 0.05); the HUD slider only takes input while the cursor is free |
 
 City generation takes ~1–2 s on a GPU (~3.5–4 s under headless SwiftShader). The seeded RNG (`mulberry32(20240607)`) makes the layout identical on every load — change the seed at the top of the script block for a new floor plan.
 
