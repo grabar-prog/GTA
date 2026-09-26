@@ -6,8 +6,8 @@ once below and written up in its owner file.
 
 ## Where we are
 
-- Gate: **all 24 checks green, exit 0**, verified@HEAD-2026-09-26 (≈24.6 s wall under SwiftShader; generation alone 4.92 s). Reference JSON and canonical commands: [contracts/harness.md](contracts/harness.md).
-- Last verified behaviour change: `seatAtTail` v3 (per-lane reseat on multiplier raise, C-LANE-6 v3) + `trafficAI` exposure on `window` for harness check 24.
+- Gate: **all 24 checks green, exit 0**, verified@HEAD-2026-09-26 (≈24.6 s wall under SwiftShader; generation alone 5.66 s). Reference JSON and canonical commands: [contracts/harness.md](contracts/harness.md).
+- Last verified behaviour change: `clearance()` same-axis fix — opposing cars on the same road no longer wait for each other at a crossing ([right-of-way.md](contracts/right-of-way.md) C-ROW-4 amendment). `stuckFraction` 0.0302 → 0.0171, `yieldSeconds` 15114 → 4444.
 - Open defects in the city / traffic / camera layer: **none**. Unresolved *decisions* are not defects — see below.
 - Tooling: `tools/lint-refs.sh` is the repo linter — anchor citations, router coverage, doc links, the pinned Three.js 0.160 API in `game/gta.html`, anchor format and documented prefixes, provenance labels on run metrics, numbered TODOs (exit 0/1), green since 2026-09-20. It also reports coverage — **most anchors are uncited**, because almost no comment in `game/gta.html` cites an invariant; the few citations that exist live in `AGENTS.md` examples.
 - Since that run, docs-only edits (`AGENTS.md` as entry point, this file as a cache) plus one comment fix in `game/gta.html`: the HUD traffic-multiplier snap is a **0.05** grid, not quarter steps.

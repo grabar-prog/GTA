@@ -108,20 +108,21 @@ This is the **current** harness (`harness/check-city.js`, 23 checks). The workin
 ```
 verified@HEAD 2026-09-26 (24/24 PASS, exit 0, wall ≈ 24.6 s under SwiftShader)
 
-genMs 5311   calls 161   tris 570796   geoms 1166
+genMs 5655   calls 173   tris 573448   geoms 1126
 meshesInScene 1214   buildings 321   trees 22   errs []
 fleet {bus:23, semi:26, pickup:18, artbus:11, suv:13, van:11, hatch:13, sedan:15} = 130 (whole park)
 kinds {bus:34, semi:26, car:70} = 130   artic 11   longest 17.5
 spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetErr 0
 maxCrossAbs 236 · wheelsWanted/Count 646/646 · unwrittenWheels 0 · unwrittenLenses 0
-maxNoseAbs 279.14 · maxSideAbs 237.38 · APRON 60
+maxNoseAbs 279.51 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 684 · offRoadSamples 0 · stuckFraction 0.0302 · perpFrames 0 · sameFrames 77502
-       maxPen 2.75 (artbus#13 vs artbus#54, t=0.5) · yieldSeconds 15114 · heldNoseMax 0
+       wraps 697 · offRoadSamples 0 · stuckFraction 0.0171 · perpFrames 0 · sameFrames 76994
+       maxPen 2.75 (artbus#4 vs semi#110, t=0) · yieldSeconds 4444 · heldNoseMax 0
        gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps
 shots: semi L=16.4 w=8 · artbus L=17.5 w=6 · bus L=12 w=4
+check24 (setTrafficMult round-trip): same-axis overlaps 0 / 0 · maxPen 0
 ```
 
 Draw-call and triangle counts are viewpoint-dependent (frustum culling): the reference numbers describe that fixed spawn-view measurement; looking downtown costs a few hundred calls.
