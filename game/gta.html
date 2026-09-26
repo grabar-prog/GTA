@@ -152,9 +152,9 @@
     const t = document.getElementById('ltxt');
     if (!t || t.textContent !== 'Booting engine…') return;
     const missing = [];
-    if (!window.MainPerson)          missing.push('assets/main_person.js');
+    if (!window.MainPerson)          missing.push('assets/models/hero.js');
     if (!window.MeridianVehicles)    missing.push('assets/vehicles.js');
-    if (!window.MeridianPedestrians) missing.push('assets/pedestrians.js');
+    if (!window.MeridianPedestrians) missing.push('assets/models/pedestrian.js');
     t.style.color = 'var(--red)';
     t.textContent = missing.length
       ? 'Failed to load asset script(s): ' + missing.join(', ')
@@ -567,7 +567,7 @@ function buildCars(){
   }
 }
 /* ---------- pedestrians: one InstancedMesh per rig part (torso/head/2 arms/2 legs) ---------- */
-// Models and palettes live in assets/pedestrians.js; RIG lands there too and is re-exported here
+// Models and palettes live in assets/models/pedestrian.js; RIG lands there too and is re-exported here
 // under its original name so updatePeds / limbInstance keep reading it untouched. Spawn RNG order
 // is unchanged: the shirt/skin picks stay inside the per-walker loop below, one draw each, in the
 // same position they occupied before (contracts/README.md §4).

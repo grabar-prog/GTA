@@ -36,7 +36,7 @@ The earlier value `HALF+6` let a car drive 6 m past the last pixel of asphalt be
 
 Combined with `sim.offRoadSamples === 0`, this is what proves nobody wandered into a building or off the plane over the whole audit run.
 
-### C-LANE-6 — The traffic multiplier scales time, never the fleet
+### C-LANE-6 — The traffic multiplier scales the active fleet, not time
 
 `setTrafficMult(m)` clamps to `[0, 2.5]` and snaps to `Math.round(m*20)/20`, i.e. **0.05** steps — the native slider `step="5"` on a `min=0 max=250` range is exactly that, because the slider reports *percent of the multiplier* (`value = round(trafficMult*100)`, so full track = ×2.5). Keys `-` / `=` move by **0.25**, `0` resets to ×1.
 

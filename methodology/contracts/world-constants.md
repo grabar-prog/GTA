@@ -34,7 +34,7 @@ Verify: harness checks 6–12 (`spawn.onBorderLine === 0`, `spawn.outsideGroundN
 | --- | --- | --- |
 | `WORLD` | `GRID * CELL` | 580 |
 | `HALF` | `WORLD / 2` | 290 |
-| `GROUND_APRON` | `ROAD/2 + 2` | 10 — dirt apron around the asphalt, keeps wrapped traffic on solid ground |
+| `GROUND_APRON` | `60` | — dirt apron around the asphalt, keeps wrapped traffic on solid ground |
 | `CAR_LIMIT` | `HALF` | 290 — wrap point for vehicles (was `HALF+6`, which drove 6 m past the last pixel of asphalt) |
 | `TRACK` | `CAR_LIMIT * 2` | 580 — **must** equal `CAR_LIMIT*2`, otherwise `gapAhead()` lies about lane distances |
 | `PED_LIMIT` | `HALF - 6` | 284 — pedestrians turn around here |

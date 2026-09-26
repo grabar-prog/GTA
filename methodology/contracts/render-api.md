@@ -29,7 +29,7 @@ Never restore the r128 CDN pair or the `document.write` fallback: the whole poin
 | Correct on 0.160 | Would be wrong (r128 leftovers) |
 | --- | --- |
 | `renderer.outputColorSpace = THREE.SRGBColorSpace` | `outputEncoding` / `sRGBEncoding` |
-| `texture.colorSpace = THREE.SRGBColorSpace` (×4 canvas textures: facade, emissive mask, ground, face atlas) | `texture.encoding` |
+| `texture.colorSpace = THREE.SRGBColorSpace` (×3 canvas textures: facade, emissive mask, ground) | `texture.encoding` |
 | `renderer.toneMapping = THREE.ACESFilmicToneMapping` | unchanged, but `toneMappingExposure` values were tuned against the r128 pipeline |
 
 A `grep` for the right-hand column must print nothing — `tools/lint-refs.sh` §7 fails if it does. The exact symptom if the wrong pair leaks in: every canvas texture renders *washed out and 2.2× too bright*, worst on the facade windows, because the canvas bytes get sampled as if they were linear.
@@ -66,7 +66,7 @@ The rule exists so the stopgap does not become permanent:
 - `tools/lint-refs.sh` §7 fails if `renderer.useLegacyLights` appears without a matching `TODO(sNN): … useLegacyLights`.
 - Removing it is a **recalibration commit** — see this file's § Open questions. Do not roll it into an unrelated edit; every intensity in `initRenderer()` and `updateCycle()` is a candidate to change, and nothing in the harness can tell whether the new numbers are right.
 
-### Surface actually used (grep-verified across `game/gta.html` + `assets/main_person.js`)
+### Surface actually used (grep-verified across `game/gta.html` + `assets/models/hero.js`)
 
 ```
 ACESFilmicToneMapping  BackSide            BoxGeometry         BufferAttribute

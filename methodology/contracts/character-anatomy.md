@@ -32,7 +32,7 @@ Arms and legs are modelled relative to their pivot so a single `Rx()` swing anim
 
 ### C-ANA-4 — The hero face is built from geometry, not a texture
 
-Eyes are sclera sphere + pupil cylinder + iris torus + eyelid skin dome — see `assets/main_person.js`, the `[b.eyeL, b.eyeR].forEach(...)` construction. The lid **slides**: a blink brings it down over the sclera. Scaling the whole eye group would crush the iris torus into a horizontal sliver and let the sclera surface cross it — that is why the old blink read as a stray line even when the eye was "open".
+Eyes are sclera sphere + pupil cylinder + iris torus + eyelid skin dome — see `assets/models/hero.js`, the `[b.eyeL, b.eyeR].forEach(...)` construction. The lid **slides**: a blink brings it down over the sclera. Scaling the whole eye group would crush the iris torus into a horizontal sliver and let the sclera surface cross it — that is why the old blink read as a stray line even when the eye was "open".
 
 This rule replaced a `faceCanvas()` / `material.map === FACE_OPEN` contract that no longer exists: the pre-extraction hero drew a face into a canvas, the current rig does not.
 
@@ -42,8 +42,8 @@ Portrait shots, not the city harness. Two supported ways to place the hero in a 
 
 - **In game.** Freeze the loop (`animate=()=>{}`), then drive the hero directly:
   `hero.applyPose(hero.poseGait(t, hero.WALKS[0], false)); hero.breathe(t, 0.016);`
-  `hero` is the object returned by `MainPerson.createHero({THREE, RoundedBoxGeometry})` from `assets/main_person.js`; `buildCharacter()` stores it on the module-local `hero` binding and its wrapper group on `charGroup`.
-- **In the workbench.** Open `assets/main_person.html` — it loads the same `assets/main_person.js` and exposes every pose/gait/jump control with no game loop running.
+  `hero` is the object returned by `MainPerson.createHero({THREE, RoundedBoxGeometry})` from `assets/models/hero.js`; `buildCharacter()` stores it on the module-local `hero` binding and its wrapper group on `charGroup`.
+- **In the workbench.** Open `assets/main_person.html` — it loads the same `assets/models/hero.js` and exposes every pose/gait/jump control with no game loop running.
 
 Camera conventions:
 
@@ -67,7 +67,7 @@ shots taken from the front say nothing about hair.
 
 1. **Hair** reads as a helmet/bowl — an even straight rim instead of strands.
 2. **Backpack** reads as a light oval shield.
-3. **A sphere artefact visible between the legs** — reported against the pre-extraction rig; the `sphAt(.12,.062,.108,…)` call it named no longer exists in `assets/main_person.js`, so this is likely already gone. Confirm against the current rig before touching it.
+3. **A sphere artefact visible between the legs** — reported against the pre-extraction rig; the `sphAt(.12,.062,.108,…)` call it named no longer exists in `assets/models/hero.js`, so this is likely already gone. Confirm against the current rig before touching it.
 4. **Dark patches left on shins/knees.**
 5. **Hands read as white mitts**, fingers invisible at 6 m: needs roughly a 9 cm palm / ~18 cm hand
    length, a separate thumb plus four tapered finger capsules, and a darker tint so they stop
