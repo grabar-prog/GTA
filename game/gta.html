@@ -1013,6 +1013,9 @@ Object.assign(window, {
   THREE,
 });
 Object.defineProperties(window, {
+  // trafficAI is a module-local `let` (created in boot). Expose via getter
+  // so page.evaluate() in check-city.js can call setTrafficMult().
+  trafficAI: {get:()=>trafficAI, configurable:true},
   // let-bound, read-only from the harness
   renderer:  {get:()=>renderer,  configurable:true},
   scene:     {get:()=>scene,     configurable:true},

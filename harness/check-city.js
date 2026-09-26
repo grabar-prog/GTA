@@ -273,6 +273,51 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
              meshesInScene: meshes, buildings: buildings.length, trees: trees.length };
   });
 
+  
+  // ---- check 24: same-axis overlap after setTrafficMult round-trip --------
+  // ---- check 24: same-axis overlap after setTrafficMult round-trip --------
+  // MERIDIAN_CHECK24_V3
+  // Проверяет, что после включения всех машин (setTrafficMult(2.5)) и
+  // возврата (1.0) в сцене нет same-axis перекрытий. Cross-axis пары
+  // (на перекрёстках) допускаются естественно, они проверяются check 21.
+  const reseat = await page.evaluate(() => {
+    // Защита: trafficAI — module-local `let` в gta.html. Если по какой-то
+    // причине он не экспортирован на window, check 24 должен вернуть
+    // понятную ошибку, а не уронить harness с ReferenceError.
+    if (typeof trafficAI === 'undefined' || !trafficAI) {
+      return { error: 'trafficAI not exposed on window', atMax: null, backTo1: null };
+    }
+
+    const overlapsAfter = (m) => {
+      trafficAI.setTrafficMult(m);
+      const active = cars.filter(c => c.active);
+      let same = 0, cross = 0, maxPen = 0, worst = null;
+      for (let i = 0; i < active.length; i++) {
+        for (let j = i + 1; j < active.length; j++) {
+          const a = active[i], b = active[j];
+          const ox = halfX(a) + halfX(b) - Math.abs(a.x - b.x);
+          const oz = halfZ(a) + halfZ(b) - Math.abs(a.z - b.z);
+          if (ox <= 0 || oz <= 0) continue;
+          const pen = Math.min(ox, oz);
+          if (a.axis === b.axis) same++; else cross++;
+          if (pen > maxPen) {
+            maxPen = pen;
+            worst = { A: a.id, B: b.id, aAxis: a.axis, bAxis: b.axis,
+                      aLine: a.lineIdx, bLine: b.lineIdx, pen: +pen.toFixed(2) };
+          }
+        }
+      }
+      return { same, cross, maxPen: +maxPen.toFixed(2), worst,
+               activeCount: active.length };
+    };
+
+    const before = trafficAI.trafficMult;
+    const atMax = overlapsAfter(2.5);
+    const backTo1 = overlapsAfter(1.0);
+    trafficAI.setTrafficMult(before);
+    return { atMax, backTo1 };
+  });
+
   const camYs = Object.values(cam);
   const checks = [
     ['no page errors', errs.length === 0],
@@ -306,6 +351,10 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       sim.deadlockCars === 0 && sim.gridlockAt < 0],
     ['a held vehicle stops before the box it was denied (worst nose overshoot ' + sim.heldNoseMax + ' m)',
       sim.heldNoseMax <= 0.6],
+    // ---- check 24: reseat integrity ----------------------------------------
+    ['no same-axis overlap after setTrafficMult round-trip (2.5: ' + reseat.atMax.same +
+      ', 1.0: ' + reseat.backTo1.same + ', maxPen ' + reseat.atMax.maxPen + ' m)',
+      reseat.atMax.same === 0 && reseat.backTo1.same === 0],
   ];
 
   console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, errs }, null, 2));

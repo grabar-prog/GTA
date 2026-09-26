@@ -381,17 +381,181 @@
     }
 
     /* ---- плотность трафика ---- */
+        /* seatAtTail(c) — при включении (setTrafficMult вверх) машина
+     * встаёт в хвост своего lane, а не в исходную точку спавна.
+     *
+     * Причина: неактивные машины сохраняют свои (x,z) из buildCars(),
+     * а активные за время простоя могут уехать вперёд и обернуться.
+     * Включение в исходной точке даёт same-axis overlap в одном lane —
+     * leaderAhead видит "себя же", bodyGap пропускает (dF + oF <= 0),
+     * unstickCars не трогает same-axis. Никто не разрешает коллизию.
+     *
+     * Хвост lane гарантированно свободен: машина встаёт за последней
+     * активной с отступом MIN_SEAT_GAP.
+     *
+     * MERIDIAN_RESEAT
+     */
+
+    /* seatAtTail(c) — при включении (setTrafficMult вверх) машина
+     * встаёт в хвост своего lane, а не в исходную точку спавна.
+     *
+     * v2 (2026-09-26):
+     *   · убран лимит CROSS_LOOK * 2 = 132 м — при 52 активных на 36 lane
+     *     расстояние между соседями в среднем 400 м, и farthestAhead
+     *     часто оставался -Infinity.
+     *   · добавлена проверка cross-axis: если новая позиция в перекрёстке
+     *     с поперечной активной — сдвигаемся дальше.
+     *   · если после 8 попыток место не найдено — возвращаем false,
+     *     applyActiveCount откладывает включение этой машины.
+     *
+     * MERIDIAN_RESEAT_V2
+     */
+
+    
+
+    
+
+    
+
+    /* ============================================================
+     seatAtTail(c, targetActive) — v3
+     ============================================================
+     При включении машины (setTrafficMult вверх) ставит её в хвост своего
+     lane, учитывая:
+       · длину самой дальней активной машины в lane (farthestCar.hl),
+       · неактивные машины, которые включатся ТЕМ ЖЕ вызовом (o.id < targetActive),
+       · конфликты И по своей оси (same-axis gap), И по перпендикулярной
+         (OBB-пересечение на перекрёстке).
+
+     Возвращает true, если место найдено и машина пересажена, false — если
+     за MAX_ATTEMPTS попыток свободного места не нашлось.
+
+     MERIDIAN_RESEAT_V3
+     */
+    const MIN_SEAT_GAP = 4;      // метры между хвостом и включаемой машиной
+    const MAX_ATTEMPTS = 12;     // число попыток сдвига вперёд по 20 м
+
+    function conflictsAt(c, targetActive) {
+      for (const o of cars) {
+        if (o === c) continue;
+        // Машины, которые не активны и не станут активными при этом
+        // вызове, нас не интересуют — они останутся под землёй.
+        if (!o.active && o.id >= targetActive) continue;
+
+        if (o.axis === c.axis && o.lineIdx === c.lineIdx && o.dir === c.dir) {
+          // Тот же lane — проверяем gap по s.
+          const rel = Math.abs((o.s - c.s));
+          const wrapped = Math.min(rel, TRACK - rel);
+          if (wrapped < c.hl + o.hl + MIN_SEAT_GAP) return true;
+        } else {
+          // Разные оси или разные lane — проверяем OBB-пересечение.
+          const ox = halfX(o) + c.hw - Math.abs(o.x - c.x);
+          const oz = halfZ(o) + c.hl - Math.abs(o.z - c.z);
+          if (ox > 0 && oz > 0) return true;
+        }
+      }
+      return false;
+    }
+
+    function seatAtTail(c, targetActive) {
+      // 1. Ищем самую дальнюю машину в lane среди тех, что активны ИЛИ
+      //    станут активными в этом вызове. Запоминаем и её саму.
+      let farthestAhead = 0;
+      let farthestCar = null;
+      for (const o of cars) {
+        if (o === c) continue;
+        if (o.axis !== c.axis || o.lineIdx !== c.lineIdx || o.dir !== c.dir) continue;
+        if (!o.active && o.id >= targetActive) continue;
+
+        // Расстояние ВПЕРЁД от c до o с учётом wrap-around (кольцо TRACK).
+        const raw = (o.s - c.s) * c.dir;
+        const aheadDist = ((raw % TRACK) + TRACK) % TRACK;
+        // aheadDist близко к 0 или TRACK означает "почти на том же месте" —
+        // берём как конфликт, чтобы не встать внутрь.
+        if (aheadDist > TRACK / 2) continue;   // o позади нас по циклу
+
+        if (aheadDist > farthestAhead) {
+          farthestAhead = aheadDist;
+          farthestCar = o;
+        }
+      }
+
+      // 2. Базовая позиция — за farthestCar с учётом ЕГО длины.
+      let baseShift;
+      if (farthestCar) {
+        baseShift = farthestAhead + farthestCar.hl + c.hl + MIN_SEAT_GAP;
+      } else {
+        baseShift = 0;   // lane пуст — не двигаем
+      }
+
+      // 3. Пробуем baseShift, потом +20, +40, ... до MAX_ATTEMPTS.
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const shift = baseShift + attempt * 20;
+        const newS = c.s + c.dir * shift;
+        const wrapped = ((newS + HALF) % TRACK + TRACK) % TRACK - HALF;
+        const oldS = c.s, oldX = c.x, oldZ = c.z;
+
+        if (c.axis === 0) c.z = wrapped; else c.x = wrapped;
+        c.s = wrapped;
+
+        if (!conflictsAt(c, targetActive)) {
+          c.mesh.position.set(c.x, 0, c.z);
+          c.spin = 0;
+          c.speed = 0;
+          c.braking = false;
+          c.xs = null; c.xGo = true; c.lead = null;
+          return true;
+        }
+
+        // откатываем
+        c.s = oldS; c.x = oldX; c.z = oldZ;
+      }
+
+      return false;   // за MAX_ATTEMPTS попыток места не нашли — отложить
+    }
+
     function applyActiveCount() {
-      activeCars = Math.max(0, Math.min(CAR_COUNT_MAX, Math.round(CAR_COUNT_BASE * mult)));
-      if (cars.length) {
-        for (const c of cars) {
-          const on = c.id < activeCars;
-          if (c.active !== on) {
-            c.active = on;
-            c.mesh.position.y = on ? 0 : -1000;
+      const targetActive = Math.max(0, Math.min(CAR_COUNT_MAX,
+        Math.round(CAR_COUNT_BASE * mult)));
+
+      // Случай 1: расширение — часть машин включается.
+      if (targetActive > activeCars) {
+        // Перебираем включаемых по возрастанию id: те, что включатся
+        // раньше, должны быть пересажены первыми, чтобы следующие их видели.
+        const toActivate = cars
+          .filter(c => !c.active && c.id < targetActive)
+          .sort((a, b) => a.id - b.id);
+
+        for (const c of toActivate) {
+          c.active = true;   // временно активна, чтобы следующие её видели
+          if (!seatAtTail(c, targetActive)) {
+            c.active = false;   // отложить
+            c.mesh.position.y = -1000;
+          } else {
+            c.mesh.position.y = 0;
           }
         }
       }
+
+      // Случай 2: сужение — часть машин выключается.
+      if (targetActive < activeCars) {
+        for (const c of cars) {
+          if (c.active && c.id >= targetActive) {
+            c.active = false;
+            c.mesh.position.y = -1000;
+          }
+        }
+      }
+
+      // Пересчёт реального числа активных (некоторые могли быть отложены).
+      if (cars.length) {
+        let real = 0;
+        for (const c of cars) if (c.active) real++;
+        activeCars = real;
+      } else {
+        activeCars = targetActive;
+      }
+
       if (onMultChanged) onMultChanged(mult, activeCars, CAR_COUNT_MAX);
     }
 

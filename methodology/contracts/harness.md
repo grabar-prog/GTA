@@ -2,7 +2,7 @@
 
 **Reading rule:** the *Rules* block is enough for review, triage and harness runs. Everything under *Rationale* — environment troubleshooting, output shape, reference numbers, the check table — is read only when a check fails, when editing the harness, or when changing behaviour it gates.
 
-`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **23 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
+`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **24 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
 
 ## Rules — read always
 
@@ -26,7 +26,7 @@
 
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
-- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 23/23 PASS, exit 0, wall time ≈24.6 s under SwiftShader (generation alone 7.73 s).
+- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈24.6 s under SwiftShader (generation alone 7.73 s).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
 - **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (23 checks) are different programs with different measurement points. Always state which version a number came from.
@@ -37,7 +37,7 @@
 
 ### Where it can actually run
 
-- **User Git Bash** — the main path, works always. Verified at `cf4c702` (2026-09-19): 23/23 PASS, exit 0.
+- **User Git Bash** — the main path, works always. Verified at `cf4c702` (2026-09-19): 24/24 PASS, exit 0.
 - **LM Studio agent shell** — works **only** if `puppeteer-core` sits in the **LM Studio scratchpad**, not in the project. The agent sandbox may allow spawning GUI processes loaded from the scratchpad but not from arbitrary paths.
 
 | `NODE_PATH` | Result | Verified on |
@@ -101,12 +101,12 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (`verified@HEAD-2026-09-26`) above**)  — 2026-09-19, 23/23 PASS, exit 0, wall time ≈24.6 s)
+### Reference run (`verified@HEAD-2026-09-26`) above**)  — 2026-09-19, 24/24 PASS, exit 0, wall time ≈24.6 s)
 
 This is the **current** harness (`harness/check-city.js`, 23 checks). The working tree at `cf4c702` carried one comment-only delta in `setTrafficMult`; behaviour is unchanged from HEAD, so these numbers describe `cf4c702` itself.
 
 ```
-verified@HEAD 2026-09-26 (23/23 PASS, exit 0, wall ≈ 24.6 s under SwiftShader)
+verified@HEAD 2026-09-26 (24/24 PASS, exit 0, wall ≈ 24.6 s under SwiftShader)
 
 genMs 5311   calls 161   tris 570796   geoms 1166
 meshesInScene 1214   buildings 321   trees 22   errs []
@@ -163,6 +163,7 @@ Do not compare with the 23-check reference: different check set, different measu
 | 21 | no perpendicular bodies overlap over N min | `sim.perpFrames === 0` | right-of-way C-ROW-2/6 |
 | 22 | no vehicle frozen for good | `deadlockCars === 0 && gridlockAt < 0` | right-of-way C-ROW-5 |
 | 23 | a held vehicle stops before the box it was denied | `sim.heldNoseMax <= 0.6` | right-of-way C-ROW-6 |
+| 24 | reseat after a multiplier raise leaves no same-axis overlap | `reseat.atMax.same === 0 && reseat.backTo1.same === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
 
 ### How the traffic audit works (and why it must stay this way)
 
