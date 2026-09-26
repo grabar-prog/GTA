@@ -180,9 +180,9 @@
     }
 
     function clearance(c, o) {
-      if (o.axis === c.axis) return Infinity;
+      if (o.axis === c.axis) return -Infinity;   // same-axis: no conflict, no hold (C-ROW-4)
       const dC = (laneCoord(o) - c.s) * c.dir;
-      if (dC < -c.hl - o.hw || dC > CROSS_LOOK + 30) return Infinity;
+      if (dC < -c.hl - o.hw || dC > CROSS_LOOK + 30) return -Infinity;
       const tClear = (dC + c.hl + o.hw) / Math.max(c.cruise, 0.5) + CLEAR_MARGIN;
       const dO = (laneCoord(c) - o.s) * o.dir;
       if (dO <= 0) return -Infinity;

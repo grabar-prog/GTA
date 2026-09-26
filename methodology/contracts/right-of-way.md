@@ -38,6 +38,8 @@ Old one-liner trap: `Map.set()` returns the **`Map`**, not the value — so `xs.
 
 Measuring along the opponent's own line produced `hold = tClear` for a car standing at its line, which let one vehicle hold **every hand of its crossing across the whole district**. After the fix: `heldFarOutSamples 466 → 185`, mean speed from cruise `0.848 → 0.862`.
 
+
+**Amendment 2026-09-26.** Same-axis opponents never hold: the opponent on the same road going the other way shares the crossing list (same `xs.key`), but the two do not conflict — they pass in different lanes. `clearance()` therefore returns `-Infinity` for them, **not** `Infinity`. The distinction matters because the arbitration loop takes `max()` of all clearances and then checks `c.xGo = tE >= hold`: an `Infinity` there means "wait forever", and the car held its neighbour until the `STALL_HOLD` escape (2.5 s) fired — visible as a pointless 2.5 s stop at a crossing when there are only two cars in the whole world. The two other "no conflict" early returns (`dC < -c.hl - o.hw` and `dC > CROSS_LOOK + 30`) had the same sign error and are also `-Infinity` now.
 ### C-ROW-5 — Three liveliness guards, all required
 
 | Guard | What it prevents |
