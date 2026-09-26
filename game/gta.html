@@ -15,7 +15,7 @@
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
     font-family:'Rajdhani',system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-transform:none}
-  canvas{display:block;position:fixed;inset:0;z-index:0}
+  body > canvas{display:block;position:fixed;inset:0;z-index:0}
 
   /* ---------- HUD ---------- */
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;opacity:0;transition:opacity .8s ease}
@@ -60,7 +60,7 @@
   #traffic .thint{margin-top:10px;display:flex;gap:6px;align-items:center}
 
   #mapwrap{position:absolute;right:22px;bottom:22px;padding:9px;border-radius:13px}
-  #minimap{display:block;width:184px;height:184px;border-radius:7px;background:#0a121c}
+  #minimap{display:block;width:min(300px,30vmin);height:min(300px,30vmin);border-radius:7px;background:#0a121c}
 
   /* ---------- Start overlay ---------- */
   #start{position:fixed;inset:0;z-index:50;display:flex;align-items:center;padding:6vw;
@@ -223,6 +223,16 @@ const { mergeGeometries, boxAt, taperBox, cylX, cylY, cylZ,
 
 /* ---------- constants ---------- */
 const GRID=10, CELL=58, ROAD=16, SIDEWALK=3.5;
+// ---- Minimap ----
+// MINIMAP_SIZE_BASE — желаемый размер канваса в CSS-пикселях; в initMinimap()
+// он ужимается до 30% меньшей стороны окна, если экран маленький.
+// MINIMAP_RANGE — сколько метров мира влезает в канвас по стороне.
+// MINIMAP_PLAYER_UP = true  → мир вращается вокруг игрока, маркер смотрит вверх (chase-cam).
+// MINIMAP_PLAYER_UP = false → север сверху, вращается только маркер (north-up).
+const MINIMAP_SIZE_BASE = 300;
+const MINIMAP_RANGE     = 284;
+const MINIMAP_PLAYER_UP = true;
+let   mmActualSize      = MINIMAP_SIZE_BASE;   // выставляется в initMinimap()
 const WORLD=GRID*CELL, HALF=WORLD/2;
 // Visual apron around the painted map. Vehicles wrap at ±HALF, so a 17 m articulated bus or a 16.4 m
 // semi-trailer sticks half its length past the border for a moment; without extra ground under it that
@@ -857,23 +867,56 @@ function updateLights(){
 
 /* ---------- minimap ---------- */
 let mmCtx,mmCanvas;
-function initMinimap(){mmCanvas=document.getElementById('minimap');const dpr=Math.min(devicePixelRatio,2);mmCanvas.width=184*dpr;mmCanvas.height=184*dpr;mmCtx=mmCanvas.getContext('2d');mmCtx.scale(dpr,dpr);}
+function initMinimap(){
+  mmCanvas=document.getElementById('minimap');
+  const dpr=Math.min(devicePixelRatio,2);
+  // Ужимаем до 30% меньшей стороны окна — чтобы канвас не выходил за экран.
+  const maxByViewport=Math.floor(Math.min(innerWidth,innerHeight)*0.30);
+  mmActualSize=Math.min(MINIMAP_SIZE_BASE,maxByViewport);
+  mmCanvas.width=mmActualSize*dpr;
+  mmCanvas.height=mmActualSize*dpr;
+  // Inline style перебивает CSS и не может быть закеширован отдельно.
+  mmCanvas.style.width=mmActualSize+'px';
+  mmCanvas.style.height=mmActualSize+'px';
+  mmCtx=mmCanvas.getContext('2d');
+  mmCtx.scale(dpr,dpr);
+}
 function drawMinimap(){
-  const S=184,k=S/WORLD,cx=S/2,cy=S/2;const R=90;
+  const S=mmActualSize;
+  const scale=S/MINIMAP_RANGE;   // пикселей на метр
+  const cx=S/2,cy=S/2;
   mmCtx.clearRect(0,0,S,S);mmCtx.fillStyle='#0b131d';mmCtx.fillRect(0,0,S,S);
-  const toX=x=>cx+(x-player.x)*k*(S/R),toY=z=>cy+(z-player.z)*k*(S/R);
-  mmCtx.strokeStyle='rgba(120,145,170,.35)';mmCtx.lineWidth=ROAD*k*(S/R);
+  const toX=x=>cx+(x-player.x)*scale,toY=z=>cy+(z-player.z)*scale;
+  // World layer: in player-up mode the whole map rotates around the
+  // player, so his forward direction is always up on the canvas.
+  mmCtx.save();
+  if (MINIMAP_PLAYER_UP) {
+    mmCtx.translate(cx, cy);
+    mmCtx.rotate(player.heading - Math.PI);   // player-up: top = куда смотрит тело
+    mmCtx.translate(-cx, -cy);
+  }
+  mmCtx.strokeStyle='rgba(120,145,170,.35)';mmCtx.lineWidth=ROAD*scale;
   for(let i=0;i<=GRID;i++){const p=-HALF+i*CELL;mmCtx.beginPath();mmCtx.moveTo(toX(p),toY(-HALF));mmCtx.lineTo(toX(p),toY(HALF));mmCtx.stroke();mmCtx.beginPath();mmCtx.moveTo(toX(-HALF),toY(p));mmCtx.lineTo(toX(HALF),toY(p));mmCtx.stroke();}
-  mmCtx.fillStyle='rgba(150,175,200,.4)';for(const b of buildings){const x=toX(b.x-b.hw),y=toY(b.z-b.hd);mmCtx.fillRect(x,y,b.hw*2*k*(S/R),b.hd*2*k*(S/R));}
+  mmCtx.fillStyle='rgba(150,175,200,.4)';for(const b of buildings){const x=toX(b.x-b.hw),y=toY(b.z-b.hd);mmCtx.fillRect(x,y,b.hw*2*scale,b.hd*2*scale);}
   // Vehicles are drawn as oriented capsules along their lane, not as dots: a 17 m artic and a hatchback
   // used to be the same pixel, which made the radar useless for exactly the traffic you want to dodge.
-  const vk=k*(S/R);mmCtx.lineCap='round';
-  for(const c of cars){const hl=c.hl*.85*vk,dx=(c.axis===0?0:c.dir)*hl,dy=(c.axis===0?c.dir:0)*hl;
+  const vk=scale;mmCtx.lineCap='round';
+  for(const c of cars){if(!c.active)continue;const hl=c.hl*.85*vk,dx=(c.axis===0?0:c.dir)*hl,dy=(c.axis===0?c.dir:0)*hl;
     mmCtx.strokeStyle=c.kind==='car'?'#ffb454':'#ff7f3f';mmCtx.lineWidth=Math.max(1.6,c.hw*2*vk);
     mmCtx.beginPath();mmCtx.moveTo(toX(c.x)-dx,toY(c.z)-dy);mmCtx.lineTo(toX(c.x)+dx,toY(c.z)+dy);mmCtx.stroke();}
   mmCtx.fillStyle='rgba(230,240,250,.5)';for(const p of peds){mmCtx.beginPath();mmCtx.arc(toX(p.x),toY(p.z),1.1,0,7);mmCtx.fill();}
-  const px=cx,py=cy;mmCtx.save();mmCtx.translate(px,py);mmCtx.rotate(-player.yaw+Math.PI);
-  mmCtx.fillStyle='#5fd0ff';mmCtx.beginPath();mmCtx.moveTo(0,-7);mmCtx.lineTo(4.5,6);mmCtx.lineTo(0,3);mmCtx.lineTo(-4.5,6);mmCtx.closePath();mmCtx.fill();mmCtx.restore();
+  mmCtx.restore();   // end of world layer
+  // Marker layer: always at the center. In player-up mode the map
+  // is already rotated so forward = up; the marker just points up.
+  // In north-up mode the marker rotates to show heading.
+  const _m = S / 184;   // scale marker with canvas size
+  mmCtx.save();
+  mmCtx.translate(cx, cy);
+  if (!MINIMAP_PLAYER_UP) mmCtx.rotate(-player.heading + Math.PI);   // north-up: стрелка по heading
+  mmCtx.fillStyle='#5fd0ff';mmCtx.beginPath();
+  mmCtx.moveTo(0,-7*_m);mmCtx.lineTo(4.5*_m,6*_m);
+  mmCtx.lineTo(0,3*_m);mmCtx.lineTo(-4.5*_m,6*_m);
+  mmCtx.closePath();mmCtx.fill();mmCtx.restore();
 }
 
 /* headlights — в assets/traffic-ai.js */
