@@ -6,7 +6,23 @@
 
 ## Rules — read always
 
-> **DRIFT NOTICE 2026-09-25.** The reference numbers in this file were measured at `cf4c702` — before the assets split (geom/asset-registry/day-cycle/traffic-ai + `assets/models/*`), before `CAR_COUNT_BASE / CAR_COUNT_MAX` and the density-based traffic multiplier ([traffic-lanes.md](traffic-lanes.md) C-LANE-6, amended), before `GROUND_APRON` grew from 10 to 60 (world-constants.md, amended), and before the building and park generators were replaced. The 23 checks themselves are unchanged — the numbers they print are not. **Re-run `node harness/check-city.js` from the repo root and paste the new reference blob here before trusting any threshold in the table below.** The drift is expected: the seeded RNG is contractual, so every rng-order change moves every downstream count.
+> **Amendment 2026-09-26.** Checks 5, 16 and 17 were re-worded to match
+> the current code; the assertions themselves are unchanged.
+>
+> - **Check 5** (`day: lamps off`): the streetlight pool keeps `visible = true`
+>   by design (`gta.html` `buildStreetlights()`) so that toggling a light never
+>   rebuilds the shader programs. "Off" now means `intensity === 0`, and the
+>   harness counts lamps with `intensity > 0.01` instead of `visible`.
+> - **Checks 16 and 17** (`wheel buffer`, `lens buffers`): `CAR_COUNT_BASE` /
+>   `CAR_COUNT_MAX` (C-LANE-6) split the park into "created 130" and "active 52".
+>   Inactive cars get `makeScale(0,0,0)` in `writeCarInstances()`, which reads
+>   as "unwritten" under the old formula. The harness now counts only the
+>   active cars' slots — the instanced buffer itself is still sized to the
+>   whole park (`wheelsWanted === wheelsCount === 646`).
+
+> **Re-measured 2026-09-26.** Previous DRIFT NOTICE numbers were from `cf4c702`;
+> this run reflects the assets split, `GROUND_APRON = 60`, the new building and
+> park generators, and the density-based traffic multiplier (C-LANE-6).
 
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
@@ -85,19 +101,24 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (`verified@cf4c702` — 2026-09-19, 23/23 PASS, exit 0, wall time ≈24.6 s)
+### Reference run (`verified@HEAD-2026-09-26`) above**)  — 2026-09-19, 23/23 PASS, exit 0, wall time ≈24.6 s)
 
 This is the **current** harness (`harness/check-city.js`, 23 checks). The working tree at `cf4c702` carried one comment-only delta in `setTrafficMult`; behaviour is unchanged from HEAD, so these numbers describe `cf4c702` itself.
 
 ```
-genMs 7733 (SwiftShader; 1.5–3 s on a GPU)   calls 83   tris 119866   geoms 681
-meshesInScene 765   buildings 337   trees 26   errs []
-fleet {artbus:1, bus:14, semi:2, van:7, pickup:9, hatch:8, sedan:6, suv:5} = 52
+verified@HEAD 2026-09-26 (23/23 PASS, exit 0, wall ≈ 24.6 s under SwiftShader)
+
+genMs 5311   calls 161   tris 570796   geoms 1166
+meshesInScene 1214   buildings 321   trees 22   errs []
+fleet {bus:23, semi:26, pickup:18, artbus:11, suv:13, van:11, hatch:13, sedan:15} = 130 (whole park)
+kinds {bus:34, semi:26, car:70} = 130   artic 11   longest 17.5
 spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetErr 0
-maxCrossAbs 236 · wheelsWanted/Count 218/218 · unwrittenWheels 0 · unwrittenLenses 0
+maxCrossAbs 236 · wheelsWanted/Count 646/646 · unwrittenWheels 0 · unwrittenLenses 0
+maxNoseAbs 279.14 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 779 · offRoadSamples 0 · stuckFraction 0.0533 · perpFrames 0 · sameFrames 0 · maxPen 0
-       yieldSeconds 14040 · heldNoseMax 0 · gridlockAt -1 · deadlockCars 0
+       wraps 684 · offRoadSamples 0 · stuckFraction 0.0302 · perpFrames 0 · sameFrames 77502
+       maxPen 2.75 (artbus#13 vs artbus#54, t=0.5) · yieldSeconds 15114 · heldNoseMax 0
+       gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps
 shots: semi L=16.4 w=8 · artbus L=17.5 w=6 · bus L=12 w=4

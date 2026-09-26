@@ -3,7 +3,7 @@
 **Reading rule:** the *Rules* block is the whole file. There is no *Rationale* section yet — every
 line below is normative and short enough to read top-to-bottom.
 
-Consumers: `assets/main_person.js` (the hero) and the pose workbench `assets/main_person.html`.
+Consumers: `assets/models/hero.js` (the hero) and the pose workbench `assets/main_person.html`.
 A future importer (glTF, generated rigs, a character editor) is the intended audience for the
 format; the current hero is a direct consumer of the same rules.
 

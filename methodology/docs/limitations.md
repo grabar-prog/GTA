@@ -54,8 +54,8 @@ on amending rather than relaxing).
 painted only inside `±290`, so standing on an outer line shows a break in the pavement. This is *accepted*, not
 overlooked: [`../contracts/world-constants.md`](../contracts/world-constants.md) records it as a known deviation.
 
-The ground plane itself was already widened — `GROUND_APRON = ROAD/2 + 2 = 10` makes it **600×600** with the UVs
-squeezed inward, so traffic that travels out to `±(HALF+APRON) = ±300` stands on dirt rather than over void. That
+The ground plane itself was already widened — `GROUND_APRON = 60` makes it **700×700** with the UVs
+squeezed inward, so traffic that travels out to `±(HALF+APRON) = ±350` stands on dirt rather than over void. That
 is what harness check 18 asserts (`sim.maxNoseAbs ≤ HALF + APRON`).
 
 *Cost of going further (asphalt out by `ROAD/2`):* four coupled edits — `CAR_LIMIT`, `TRACK` (which is

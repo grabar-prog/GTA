@@ -6,7 +6,7 @@ them. Line numbers drift — locate symbols with `grep -n` in the game file.
 
 ## Geometry merging is the entire budget
 
-- *(amended )* **Building** = 3 meshes: shell (vertex colours), lit glass (bright emissive, ~40 % of windows), dark glass (no emissive). The split is what makes windows glow on their own while walls stay neutral — `vertexColors` in Three.js only affect `diffuse`, not `emissive`, so one material cannot do both. The old 2-mesh description (shell + one shared glazing plane) is history.
+- *(amended 2026-09-26)* **Building** = 3 meshes: shell (vertex colours), lit glass (bright emissive, ~40 % of windows), dark glass (no emissive). The split is what makes windows glow on their own while walls stay neutral — `vertexColors` in Three.js only affect `diffuse`, not `emissive`, so one material cannot do both. The old 2-mesh description (shell + one shared glazing plane) is history.
 - **Vehicle** = 1 merged body mesh; wheels and headlight/lens pairs are shared `InstancedMesh`es across the whole
   park (**52 bodies + 4 instanced meshes instead of ~90 boxes**).
 - **Bus** = one merged mesh including windows and doors. **Semi** = cab + trailer merged, with double wheels
@@ -24,7 +24,7 @@ a call-count difference between two runs may just be where the camera was pointi
 
 ## Ground apron and UV squeeze
 
-`GROUND_APRON = ROAD/2 + 2 = 10`, so the ground plane is `WORLD + 2*APRON` = **600×600** while the painted asphalt
+`GROUND_APRON = 60`, so the ground plane is `WORLD + 2*APRON` = **700×700** while the painted asphalt
 map only covers `±HALF` (±290). The UVs are rescaled inward so the extra ring reads as dirt rather than void. This
 is what keeps wrap-around traffic — which travels to `±(HALF+APRON)` = ±300 — on solid ground instead of floating
 over nothing, and it is asserted by harness check 18 (`sim.maxNoseAbs ≤ HALF + APRON`).

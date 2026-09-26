@@ -1,6 +1,6 @@
 # Architecture map — `game/gta.html`
 
-Line numbers were valid **before** the r128→0.160 migration and the `assets/main_person.js`
+Line numbers were valid **before** the r128→0.160 migration and the `assets/models/hero.js`
 extraction; they are stale. The **section names** below are the stable reference — grep for
 the marker, not the line. Re-derive with
 `grep -nE '^(async )?function [A-Za-z_$]+' game/gta.html` after any large edit.
@@ -16,7 +16,7 @@ Exact line numbers drift with every edit — grep for the marker instead.
 | `id="start"` | start screen with the "enter" button (z-index 50) |
 | `id="loader"` | loader progress bar (z-index 80 — must stay above `#start`) |
 | `Booting engine…` | inline **watchdog** classic `<script>`: 4 s timer that surfaces a failed importmap (`boot().catch` never runs when the module import itself fails) |
-| `<script src="../assets/geom.js">` … `<script src="../assets/vehicles.js">` | classic asset scripts, all loaded before the module: `geom.js`, `asset-registry.js`, `day-cycle.js`, `models/manifest.js` + `models/_loader.js`, `vehicles.js` — see README.md for the full list |
+| `<script src="../assets/geom.js">` … `<script src="../assets/vehicles.js">` | classic asset scripts, all loaded before the module: `geom.js`, `asset-registry.js`, `day-cycle.js`, `traffic-ai.js, models/hero.js, models/pedestrian.js, models/car.js, models/bus.js, models/semi.js, models/building.js, models/tree.js, models/streetlight.js, models/park.js, models/road.js, models/distant-city.js, vehicles.js`, `vehicles.js` — see README.md for the full list |
 | `<script type="importmap">` | `three` / `three/addons/` → `unpkg.com/three@0.160.x` |
 | `<script type="module">` | the entire game: one module, one `<script>` block |
 | `</body></html>` | last two lines |
@@ -28,7 +28,7 @@ the trailing `Object.assign(window, {…})` / `Object.defineProperties(window, {
 harness contract — any state `harness/check-city.js` needs must be added there or `page.evaluate()`
 dies with `ReferenceError`. See [contracts/harness.md](../contracts/harness.md) § Open questions.
 
-The hero rig is **not** in this file. `assets/main_person.js` loads as a classic `<script>` before
+The hero rig is **not** in this file. `assets/models/hero.js` loads as a classic `<script>` before
 the module and exports `window.MainPerson.createHero({THREE, RoundedBoxGeometry})`; `buildCharacter()`
 binds the returned wrapper group to `charGroup` and drives it each frame with
 `hero.update(dt, {speed, sprint})`.

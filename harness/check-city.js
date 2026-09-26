@@ -72,10 +72,28 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
     longest: Math.max(...cars.map(c => c.type.L)),
     wheelsWanted: cars.reduce((s, c) => s + c.wheels.length, 0),
     wheelsCount: wheelMesh.count,
-    unwrittenWheels: (() => { const m = new THREE.Matrix4(); let n = 0;
-      for (let i = 0; i < wheelMesh.count; i++) { wheelMesh.getMatrixAt(i, m); if (!(m.elements[13] > 0.2)) n++; } return n; })(),
-    unwrittenLenses: (() => { const m = new THREE.Matrix4(); let n = 0;
-      for (let i = 0; i < headMesh.count; i++) { headMesh.getMatrixAt(i, m); if (!(m.elements[13] > 0.2)) n++; } return n; })(),
+    unwrittenWheels: (() => {
+      const m = new THREE.Matrix4(); let n = 0, wi = 0;
+      for (const c of cars) {
+        for (let k = 0; k < c.wheels.length; k++) {
+          if (c.active) { wheelMesh.getMatrixAt(wi, m); if (!(m.elements[13] > 0.2)) n++; }
+          wi++;
+        }
+      }
+      return n; })(),
+    unwrittenLenses: (() => {
+      const m = new THREE.Matrix4(); let n = 0, li = 0;
+      for (const c of cars) {
+        if (c.active) {
+          for (let k = 0; k < c.heads.length; k++) {
+            headMesh.getMatrixAt(li, m); if (!(m.elements[13] > 0.2)) n++;
+            li++;
+          }
+        } else {
+          li += c.heads.length;
+        }
+      }
+      return n; })(),
     // every body of the fleet must be inside the ground plane + apron right after generation
     maxNoseAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.z : c.x) + c.hl)),
     maxSideAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.x : c.z) + c.hw)),
@@ -172,7 +190,7 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
   }, PITCHES);
 
   const cycle = await page.evaluate(() => {
-    const lampsOn = () => lampLightPool.filter(l => l.visible).length;
+    const lampsOn = () => lampLightPool.filter(l => l.intensity > 0.01).length;
     dayTime = 0.83; updateCycle(0);
     const night = { emissive: +glassMat.emissiveIntensity.toFixed(2), moon: moonMesh.visible, lamps: lampsOn() };
     dayTime = 0.42; updateCycle(0);
