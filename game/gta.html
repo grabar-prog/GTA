@@ -333,6 +333,12 @@ const buildingGlassDarkMat=new THREE.MeshStandardMaterial({
   metalness:0.45,
 });
 const glassMat=new THREE.MeshStandardMaterial({color:0xffffff,map:null,emissive:0xffb86b,emissiveMap:null,emissiveIntensity:0,roughness:.28,metalness:.5});
+// Остекление автобуса — отдельный материал, чтобы ночью светились только
+// окна, а не краска кузова: vertex colors работают по diffuse, emissive
+// светит поверх всего меша. Интенсивность задаёт day-cycle.js по night
+// (см. mats.busGlassMat в update()); значение совпадает с buildingGlassMat,
+// чтобы автобус не пересвечивал легковые.
+const busGlassMat=new THREE.MeshStandardMaterial({vertexColors:true,emissive:0xffd090,emissiveIntensity:0,roughness:.22,metalness:.35});
 // BODY_HEXES/ROOF_HEX/TRIM_HEX переехали в assets/models/building.js.
 
 /* ---------- city data ---------- */
@@ -544,8 +550,18 @@ function buildCars(){
     // Forward is local +Z, so yaw must come from the travel vector. The old table (yaw=PI for dir>0
     // on the z-axis) pointed every car against its motion — invisible with two boxes, obvious now.
     const yaw=Math.atan2(vx,vz);
-    const mesh=new THREE.Mesh(V.makeVehicleGeometry(t,paint,tint,rng),carBodyMat);
+    const pair=V.makeVehicleGeometry(t,paint,tint,rng);
+    const mesh=new THREE.Mesh(pair.body,carBodyMat);
     mesh.castShadow=true;mesh.position.set(x,0,z);mesh.rotation.y=yaw;scene.add(mesh);
+    // Автобусное стекло — ребёнок кузова: traffic-ai двигает mesh, стекло
+    // едет следом, а -1000 на неактивной машине уносит и его. Никакой
+    // синхронизации позиции в кадре не требуется.
+    let glassMesh=null;
+    if(pair.glass){
+      glassMesh=new THREE.Mesh(pair.glass,busGlassMat);
+      glassMesh.castShadow=false;   // стекло не бросает тень на собственный кузов
+      mesh.add(glassMesh);
+    }
 
     const dr=DRIVE[t.kind],ll=V.lightLayout(t),cruise=rand(dr.cruise[0],dr.cruise[1]);
     // id is fixed at build time and never reused: it is the last tie-break of a crossing, the one that
@@ -882,7 +898,7 @@ async function boot(){
     DAY_LEN,
     world:{GRID,CELL,ROAD},
     lights:{sun,moon,hemi},
-    mats:{glassMat,buildingGlassMat,solidMat,headMat,tailMat},
+    mats:{glassMat,buildingGlassMat,solidMat,headMat,tailMat,busGlassMat},
     pools:{lampLightPool},
     getPlayerPos:()=>player,
     startTime:8/24,

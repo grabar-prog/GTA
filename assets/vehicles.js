@@ -107,9 +107,12 @@
 
     // Монетка двери живёт здесь — её позиция в rng-потоке контрактна.
     function makeVehicleGeometry(t, paint, tint, rng) {
-      if (t.kind === 'bus')  return makeBusGeometry(t, paint, tint, rng() < .5 ? 1 : -1);
-      if (t.kind === 'semi') return makeSemiGeometry(t, paint, tint);
-      return makeCarGeometry(t, paint);
+      if (t.kind === 'bus') {
+        const r = makeBusGeometry(t, paint, tint, rng() < .5 ? 1 : -1);
+        return { body: r.body, glass: r.glass };
+      }
+      if (t.kind === 'semi') return { body: makeSemiGeometry(t, paint, tint) };
+      return { body: makeCarGeometry(t, paint) };
     }
 
     // Unit wheel (радиус 1) — один InstancedMesh на весь парк, размеры через

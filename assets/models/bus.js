@@ -34,14 +34,18 @@
 
   function makeGeometry(G, t, paint, stripe, doorSide, PAL) {
     const { mergeGeometries, boxAt, taperBox, cylZ } = G;
-    const P = [], W = t.W, L = t.L, y0 = t.floorY, y1 = t.roofY, h = y1 - y0;
+    // Two accumulators: body keeps the painted shell, glass keeps everything
+    // that should light up at night (side band, doors, windshield, rear
+    // window). Kept apart so game/gta.html can give glass its own material —
+    // raising emissiveIntensity on the merged body would light the paint too.
+    const P = [], G_ = [], W = t.W, L = t.L, y0 = t.floorY, y1 = t.roofY, h = y1 - y0;
     const bandY = y1 - .2 - t.bandH / 2;
     const doorTop = y1 - .35, doorBot = .95, dh = doorTop - doorBot;
     const span = (z0, z1, doors, roofKit) => {
       const l = z1 - z0, cz = (z0 + z1) / 2, fz = z1, rz = z0;
       P.push(boxAt(W - .5, .34, l - .1, 0, y0 - .2, cz, PAL.trim));
       P.push(taperBox(W, h, l - .12, 0, y0 + h / 2, cz, .985, .99, paint));
-      P.push(boxAt(W + .06, t.bandH, l - 1.3, 0, bandY, cz, PAL.glass));
+      G_.push(boxAt(W + .06, t.bandH, l - 1.3, 0, bandY, cz, PAL.glass));
       P.push(boxAt(W + .07, .2, l - 1.4, 0, bandY - t.bandH / 2 - .12, cz, stripe));
       for (let z = rz + 1.0; z < fz - .8; z += 2.3) {
         const atDoor = doors.some(zd => Math.abs(z - zd) < .95);
@@ -50,7 +54,7 @@
       }
       for (const zd of doors) {
         const dx = doorSide * (W / 2 + .06);
-        P.push(boxAt(.09, dh, 1.24, dx, (doorTop + doorBot) / 2, zd, PAL.glass));
+        G_.push(boxAt(.09, dh, 1.24, dx, (doorTop + doorBot) / 2, zd, PAL.glass));
         P.push(boxAt(.11, dh + .1, .09, dx, (doorTop + doorBot) / 2, zd - .63, PAL.trim));
         P.push(boxAt(.11, dh + .1, .09, dx, (doorTop + doorBot) / 2, zd + .63, PAL.trim));
         P.push(boxAt(.11, .1, 1.34, dx, doorBot, zd, PAL.trim));
@@ -75,13 +79,15 @@
       span(-L / 2, L / 2, [L / 2 - 2.2, -.4], true);
     }
     const fz = L / 2, rz = -L / 2;
-    P.push(boxAt(W - .5, 1.45, .12, 0, y1 - 1.05, fz + .03, PAL.glass));
+    G_.push(boxAt(W - .5, 1.45, .12, 0, y1 - 1.05, fz + .03, PAL.glass));
     P.push(boxAt(W - 1.15, .34, .1, 0, y1 - .42, fz + .05, PAL.busDisplay));
     P.push(boxAt(W + .02, .36, .3, 0, .56, fz - .05, PAL.trim));
     P.push(boxAt(W + .02, .36, .3, 0, .56, rz + .05, PAL.trim));
-    P.push(boxAt(W - .7, .95, .1, 0, 1.45, rz - .03, PAL.dark));
+    // Rear window moved into the glass mesh and repainted PAL.glass so it
+    // joins the night glow; PAL.dark here would read as an unlit panel.
+    G_.push(boxAt(W - .7, .95, .1, 0, 1.45, rz - .03, PAL.glass));
     for (let i = 0; i < 3; i++) P.push(boxAt(W - 1.0, .06, .06, 0, 1.15 + i * .22, rz - .07, PAL.chrome));
-    return mergeGeometries(P);
+    return { body: mergeGeometries(P), glass: mergeGeometries(G_) };
   }
 
   // Фары на углах юбки, задние — на уровне борта, не на крыше.
@@ -111,9 +117,14 @@
       // В превью ливрея/краска берутся напрямую: там нужен контролируемый
       // второй цвет, а не общая палитра парка из vehicles.js.
       const paint2 = [0x2f7fd1, 0x3fae6a][i] || paint;
-      const m = new THREE.Mesh(makeGeometry(geom, t, paint2, stripe, 1, PALETTE), mat);
+      const pair = makeGeometry(geom, t, paint2, stripe, 1, PALETTE);
+      const m = new THREE.Mesh(pair.body, mat);
       m.castShadow = true; m.receiveShadow = true;
       m.position.x = x + t.W / 2;
+      // Glass rides along as a child: preview has no emissive pass, so the
+      // same material is fine here and the pair stays visually identical.
+      const g = new THREE.Mesh(pair.glass, mat);
+      m.add(g);
       x += t.W + gap;
       group.add(m);
     }

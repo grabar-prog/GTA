@@ -17,7 +17,7 @@
  *     DAY_LEN: 170,
  *     world: { GRID, CELL, ROAD },
  *     lights: { sun, moon, hemi },
- *     mats: { glassMat, buildingGlassMat, solidMat, headMat, tailMat },
+ *     mats: { glassMat, buildingGlassMat, solidMat, headMat, tailMat, busGlassMat },
  *     pools: { lampLightPool },
  *     getPlayerPos: () => player,
  *     startTime: 8/24,
@@ -334,6 +334,7 @@
       // Материалы: эмиссия привязана к night.
       if (mats.glassMat)          mats.glassMat.emissiveIntensity          = night * 1.7;
       if (mats.buildingGlassMat)  mats.buildingGlassMat.emissiveIntensity  = night * 1.4;
+      if (mats.busGlassMat)       mats.busGlassMat.emissiveIntensity       = night * 1.4;
       if (mats.solidMat)          mats.solidMat.emissiveIntensity          = night * 0.02;
       if (mats.headMat)           mats.headMat.emissiveIntensity           = night * 3.0;
       if (mats.tailMat)           mats.tailMat.emissiveIntensity           = 0.12 + night * 1.2;
