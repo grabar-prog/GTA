@@ -70,4 +70,8 @@ generation order, so the city is identical on every load — and any edit that a
 - Runtime assertions: [contracts/harness.md](../contracts/harness.md) (23 checks).
 - Three.js API surface pinning: [contracts/render-api.md](../contracts/render-api.md).
 - [`AGENTS.md`](../../AGENTS.md) is the entry point: working norms plus a "where to look" table. It deliberately
-  carries **no** line-number map, no invariant list and no status — those live here and in `contracts/`.
+  carries **no** line-number map, no restated invariants and no status —
+those live in the contract files. The routing table cites anchor identifiers
+(, …) as pointers, not as restatements; the prefix list under
+"When a comment points at a contract" is metadata for , not a
+second copy of the rules.
