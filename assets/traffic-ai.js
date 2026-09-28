@@ -68,6 +68,19 @@
     const HEADLIGHT_POOL_SIZE   = 12;   // 6 машин × 2 фары
     const HEADLIGHT_NEAR_PLAYER = 18;
 
+    // r155 flipped renderer.useLegacyLights from true to false (contracts/
+    // render-api.md C-API-7, resolved 2026-09-28). SpotLight intensity is now
+    // in candelas, and the physical 1/d^decay falloff reaches zero at distance
+    // much sooner than the legacy curve did — so the pre-r155 numbers
+    // (0.9 * night intensity, distance 30) read as "off" once the flag went
+    // away. Fixed the same way the streetlight PointLight pool was:
+    //   · scalar × LIGHT_RECAL_SPOT to compensate the π-driven candela scale
+    //     (same 60 used for LIGHT_RECAL_LAMP in day-cycle.js);
+    //   · distance 30 → HEADLIGHT_DIST so the cone reaches past the target
+    //     point at 20 m in front of the car.
+    const LIGHT_RECAL_SPOT = 60;
+    const HEADLIGHT_DIST   = 60;
+
     const _m4d = new THREE.Matrix4();
     const _ql  = new THREE.Quaternion();
 
@@ -322,7 +335,7 @@
     function buildHeadlightPool() {
       if (headlightPool.length) return;
       for (let i = 0; i < HEADLIGHT_POOL_SIZE; i++) {
-        const l = new THREE.SpotLight(0xfff2d0, 0, 30, 0.42, 0.6, 1.5);
+        const l = new THREE.SpotLight(0xfff2d0, 0, HEADLIGHT_DIST, 0.42, 0.6, 1.5);
         l.visible = true;                 // «выключено» — это intensity=0
         l.castShadow = false;
         scene.add(l);
@@ -361,7 +374,7 @@
         if (a.near !== b.near) return a.near ? -1 : 1;
         return a.d2 - b.d2;
       });
-      const intensity = curNight * 0.9;
+      const intensity = curNight * 0.9 * LIGHT_RECAL_SPOT;
       for (let i = 0; i < headlightPool.length; i++) {
         const l = headlightPool[i];
         const carIdx = (i / 2) | 0;

@@ -70,9 +70,11 @@ r155 changed the light default (`useLegacyLights` went from `true` to `false` by
 | `sun.intensity` curve | `lerp(1.5, 0, night) * smoothstep(...)` | same × `LIGHT_RECAL_DIR` | `π` |
 | `moon.intensity` curve | `lerp(0.05, 0.28, night)` | same × `LIGHT_RECAL_DIR` | `π` |
 | `lampLightPool[i].intensity` curve | `lerp(0, 2.4, night)` | same × `LIGHT_RECAL_LAMP` | `60` |
+| `headlightPool[i].intensity` in `assets/traffic-ai.js` `updateHeadlights()` | `curNight * 0.9` | same × `LIGHT_RECAL_SPOT` | `60` |
+| headlight `SpotLight(…, distance, …)` in `buildHeadlightPool()` | `distance = 30` | `distance = 60` | — |
 | streetlight pool `PointLight(…, 0, distance, 2)` in `game/gta.html` | `distance = 26` | `distance = 60` | — |
 
-The first four are in `assets/day-cycle.js`, exported as `LIGHT_RECAL_DIR` / `LIGHT_RECAL_LAMP`. The pool radius is in `buildStreetlights()`; it is part of the same change because the flag flip also swapped the falloff shape (legacy `saturate(1 - d/distance)^decay` → physical `1/d²` with a soft cutoff), and no scalar alone reproduces the old curve — widening `distance` is what keeps the walls at 10–40 m lit without overexposing the pavement.
+The `sun` / `hemi` / `moon` factors live in `assets/day-cycle.js`, exported as `LIGHT_RECAL_DIR`. The lamp-pool factor, exported as `LIGHT_RECAL_LAMP`, is used in the same module; the PointLight pool's own `distance` (26 → 60) is set in `game/gta.html` `buildStreetlights()`. The headlight factor `LIGHT_RECAL_SPOT` and the SpotLight `distance` (30 → 60) sit in `assets/traffic-ai.js`, in `updateHeadlights()` and `buildHeadlightPool()` respectively. All three `distance`/`intensity` pairs move together for the same reason: the flag flip swapped the falloff shape (legacy `saturate(1 - d/distance)^decay` → physical `1/d²` with a soft cutoff), no scalar alone reproduces the old curve, and widening `distance` is what keeps the walls at 10–40 m lit (and the road in front of a car illuminated) without overexposing the near plane.
 
 **Acceptance.** Two columns. The rig's `diff.js` output against the pre-flip baseline:
 
