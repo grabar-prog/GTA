@@ -368,9 +368,18 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
     ['a held vehicle stops before the box it was denied (worst nose overshoot ' + sim.heldNoseMax + ' m)',
       sim.heldNoseMax <= 0.6],
     // ---- check 24: reseat integrity ----------------------------------------
-    ['no same-axis overlap after setTrafficMult round-trip (2.5: ' + reseat.atMax.same +
-      ', 1.0: ' + reseat.backTo1.same + ', maxPen ' + reseat.atMax.maxPen + ' m)',
-      reseat.atMax.same === 0 && reseat.backTo1.same === 0],
+    // Both axes: same-axis overlaps are the seatAtTail same-lane bug (C-LANE-6);
+    // cross-axis overlaps are a perpendicular seat collision, which the earlier
+    // `same === 0` assertion did not fail (see `reseat.atMax.cross`). The
+    // corresponding invariant for the 20k-step sim is check 21; this branch
+    // guards the post-reseat state that the sim does not cover.
+    ['no overlap after setTrafficMult round-trip (2.5: same ' + reseat.atMax.same +
+      ', cross ' + reseat.atMax.cross +
+      '; 1.0: same ' + reseat.backTo1.same +
+      ', cross ' + reseat.backTo1.cross +
+      '; maxPen ' + reseat.atMax.maxPen + ' m)',
+      reseat.atMax.same === 0 && reseat.atMax.cross === 0 &&
+      reseat.backTo1.same === 0 && reseat.backTo1.cross === 0],
   ];
 
   console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, errs }, null, 2));

@@ -52,21 +52,59 @@
   // через поворот инстанса.
   function makeSidewalkGeometry(THREE, geom, cell, road, sw) {
     const len = cell - road;
+    // Slab is inset by the curb width so the two boxes abut at x = -sw/2 + 0.18
+    // instead of overlapping. Before: slab spanned x ∈ [-sw/2, +sw/2] and the
+    // curb x ∈ [-sw/2, -sw/2 + 0.18] — their -X faces and their z-end faces were
+    // coplanar over y ∈ [0, 0.15], which Z-fought on the visible curb strip and
+    // its ends (merged into one buffer, so no backface culling resolves it).
+    // After: no coplanar pair survives; the slab outer edge is still at +sw/2.
+    const CURB_W = 0.18;
     return geom.mergeGeometries([
-      { geo: new THREE.BoxGeometry(sw, 0.15, len).translate(0, 0.075, 0), color: 0xb8b0a5 },
-      { geo: new THREE.BoxGeometry(0.18, 0.22, len).translate(-sw / 2 + 0.09, 0.11, 0), color: 0x8a8580 },
+      { geo: new THREE.BoxGeometry(sw - CURB_W, 0.15, len).translate(CURB_W / 2, 0.075, 0), color: 0xb8b0a5 },
+      { geo: new THREE.BoxGeometry(CURB_W, 0.22, len).translate(-sw / 2 + CURB_W / 2, 0.11, 0), color: 0x8a8580 },
     ]);
   }
 
   function buildSidewalks(THREE, geom, scene, grid, cell, road, sw, half) {
-    const geo = makeSidewalkGeometry(THREE, geom, cell, road, sw);
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95 });
-    const items = [];
+    const CURB_W = 0.18;
+    // At every intersection corner the axis=0 and axis=1 strips used to share a
+    // 3.5×3.5 m tile (both slabs at y ∈ [0, 0.15], both curbs at y ∈ [0, 0.22]).
+    // Coincident surfaces merged into one InstancedMesh cannot be arbitrated by
+    // backface culling, and a per-material polygonOffset only decides which
+    // side wins — it does not remove the visual "block" the overlap produces.
+    // Instead, shorten axis=1 strips at both ends by the amount they would
+    // overlap: slab by sw, curb by CURB_W. The corner is then covered by
+    // axis=0 alone, with no coincident surfaces anywhere.
+    // Both axes use the SAME geometry. The corner overlap between axis=0 and
+    // axis=1 slabs (a ~3.5×3.5 m square, both top faces at y=0.15) and between
+    // their curbs (a 0.18×0.18 square, both top faces at y=0.22) is resolved
+    // by the polygonOffset on mat1 below, not by shortening either side. An
+    // earlier attempt shortened axis=1 to remove the overlap geometrically;
+    // it worked but left a visible step at the corner (the shortened slab no
+    // longer supported its own curb, which then stood 7 cm above axis=0's
+    // slab). Full-length pieces plus a constant polygonOffset avoids both:
+    // no coincident surface flickers, and no geometry sticks out.
+    const geo0 = makeSidewalkGeometry(THREE, geom, cell, road, sw, {});
+    const geo1 = makeSidewalkGeometry(THREE, geom, cell, road, sw, {});
+
+    const mat0 = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95 });
+    const mat1 = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95 });
+    // Constant depth bias for axis=1: factor=0 removes the slope multiplier
+    // (v3 used factor=1 and the corner flicker returned at oblique views,
+    // because the effective bias varied with camera angle). units=32 is large
+    // enough to exceed the depth difference between the two coplanar slabs at
+    // any view distance under 1 km — with a 24-bit depth buffer, near=0.1,
+    // far=1500, the per-unit depth at 100 m is ~1 mm, so 32 units ≈ 32 mm,
+    // well beyond the interpolation noise that made the corner shimmer.
+    mat1.polygonOffset = true;
+    mat1.polygonOffsetFactor = 0;
+    mat1.polygonOffsetUnits = 32;
+
+    const items0 = [];
+    const items1 = [];
     const swOff = road / 2 + sw / 2;
 
     for (let axis = 0; axis < 2; axis++) {
-      // axis 0 — дорога идёт по Z; axis 1 — по X.
-      // Только внутренние дороги: k=1..grid-1, краевые линии выходят за HALF.
       for (let k = 1; k <= grid - 1; k++) {
         const lineCoord = -half + k * cell;
         for (let i = 0; i < grid; i++) {
@@ -84,26 +122,30 @@
             }
             if (Math.abs(cx) > half - sw / 2 + 0.01) continue;
             if (Math.abs(cz) > half - sw / 2 + 0.01) continue;
-            items.push({ x: cx, y: 0, z: cz, yaw });
+            (axis === 0 ? items0 : items1).push({ x: cx, y: 0, z: cz, yaw });
           }
         }
       }
     }
 
-    const mesh = new THREE.InstancedMesh(geo, mat, items.length);
-    mesh.castShadow = false; mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion();
-    const p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
-    const Y = new THREE.Vector3(0, 1, 0);
-    items.forEach((it, i) => {
-      q.setFromAxisAngle(Y, it.yaw);
-      m.compose(p.set(it.x, it.y, it.z), q, s);
-      mesh.setMatrixAt(i, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    scene.add(mesh);
-    return mesh;
+    function makeMesh(geo, mat, items) {
+      const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+      mesh.castShadow = false; mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+      const p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
+      const Y = new THREE.Vector3(0, 1, 0);
+      items.forEach((it, i) => {
+        q.setFromAxisAngle(Y, it.yaw);
+        m.compose(p.set(it.x, it.y, it.z), q, s);
+        mesh.setMatrixAt(i, m);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    return [makeMesh(geo0, mat0, items0), makeMesh(geo1, mat1, items1)];
   }
 
   /* ---------- markings: dashes + edges ---------- */

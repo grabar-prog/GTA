@@ -164,7 +164,7 @@ Do not compare with the 23-check reference: different check set, different measu
 | 21 | no perpendicular bodies overlap over N min | `sim.perpFrames === 0` | right-of-way C-ROW-2/6 |
 | 22 | no vehicle frozen for good | `deadlockCars === 0 && gridlockAt < 0` | right-of-way C-ROW-5 |
 | 23 | a held vehicle stops before the box it was denied | `sim.heldNoseMax <= 0.6` | right-of-way C-ROW-6 |
-| 24 | reseat after a multiplier raise leaves no same-axis overlap | `reseat.atMax.same === 0 && reseat.backTo1.same === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
+| 24 | reseat after a multiplier raise leaves no overlap, same- or cross-axis | `reseat.atMax.same === 0 && reseat.atMax.cross === 0 && reseat.backTo1.same === 0 && reseat.backTo1.cross === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
 
 ### How the traffic audit works (and why it must stay this way)
 

@@ -462,8 +462,16 @@
           if (wrapped < c.hl + o.hl + MIN_SEAT_GAP) return true;
         } else {
           // Разные оси или разные lane — проверяем OBB-пересечение.
-          const ox = halfX(o) + c.hw - Math.abs(o.x - c.x);
-          const oz = halfZ(o) + c.hl - Math.abs(o.z - c.z);
+          //
+          // halfX/halfZ are axis-aware: for a car with axis=1 the length runs
+          // along X (halfX = hl) and the width along Z (halfZ = hw). Using the
+          // literal c.hw / c.hl was correct only when c.axis === 0; for c.axis
+          // === 1 it under-counted the x-overlap by (c.hl - c.hw) — ~6.8 m for
+          // a semi — so a perpendicular neighbour could slip past this check
+          // and the car would be seated inside it. Same helpers the rest of
+          // the module uses for OBB tests.
+          const ox = halfX(o) + halfX(c) - Math.abs(o.x - c.x);
+          const oz = halfZ(o) + halfZ(c) - Math.abs(o.z - c.z);
           if (ox > 0 && oz > 0) return true;
         }
       }
@@ -507,6 +515,14 @@
         const newS = c.s + c.dir * shift;
         const wrapped = ((newS + HALF) % TRACK + TRACK) % TRACK - HALF;
         const oldS = c.s, oldX = c.x, oldZ = c.z;
+
+        // Reject candidates inside a crossing box. buildCars applies the same
+        // guarantee via clearOfBox() at generation time. Without it, a car can
+        // be seated inside a crossing; a perpendicular car arrives moments
+        // later, both are _inBox = true, arbitrateCrossings grants both
+        // xGo = true, and they drive into each other. Symptom: overlap of two
+        // different-axis cars, only after moving the density slider up.
+        if (inBox(wrapped, c.hl)) continue;
 
         if (c.axis === 0) c.z = wrapped; else c.x = wrapped;
         c.s = wrapped;
