@@ -78,6 +78,8 @@ Numbers, derivations and cross-references: [methodology/contracts/world-constant
 
 - Only 6 streetlights actually illuminate; distant poles read as silhouettes at night (compensated by emissive windows).
 - No LOD or distance culling — the entire city is always in the scene.
+- The chase camera reads as sitting in front of the hero rather than behind him — accepted as-is; flipping the offset sign is a one-line fix plus a comparison shot.
+- Hero model polish (hair, backpack, hands) was never verified against the current build — the leads were dropped 2026-09-28; re-shoot before touching it.
 - Vehicles keep their lane and yield at crossings, but never turn: a turn would need trajectory rebuilding that the model doesn't have. Pedestrians pace their own sidewalk strip and don't cross districts.
 - Outer road lines `0` and `GRID` sit exactly on the ground-plane border (`±290`). The asphalt itself only exists inside `±290`, so standing on an outer line shows a break in the pavement; vehicles wrap at `±HALF = ±290`, and only a long body's nose reaches into the 10 m dirt apron (out to `±300`).
 - Vehicles pop in/out at the map edge on wrap-around, with no fade.

@@ -45,25 +45,3 @@ Wrapping either term in `||` around each building grows an invisible cross that 
 ### C-CAM-5 — Mouse capture lifecycle
 
 The old one-liner attached while `renderer` was still `undefined`, so the view stayed stuck after a single Escape; see [boot-sequence.md](boot-sequence.md) C-BOOT-4 for the listener and C-BOOT-5 for why the HUD slider stops propagating its click.
-
-## Open questions
-
-Unresolved items awaiting a decision — not invariants, and not accepted limitations either
-(accepted ones live in [docs/limitations.md](../docs/limitations.md)). The list of owners is
-in [handsoff.md](../handsoff.md); the detail lives only here.
-
-### chase-camera orientation
-
-The offset applied to the camera position reuses the same `sin/cos(player.yaw)` as the heading
-vector — i.e. along his facing direction — while the following `lookAt` points back at him, so
-the rig reads as a camera sitting *in front* of the hero rather than behind his back.
-
-Why it is still open: no measurement says which reading is wrong, and flipping the sign changes
-how the game feels. Decide by comparison, not opinion — take an in-game chase-cam shot and check
-it against the portrait rig's `SH.cam(d)` (`d < 0` → behind his back) and `camSide()` from
-[character-anatomy.md](character-anatomy.md) § Verification. Ask before committing a flip; this
-file's C-CAM-2 height formula is not in question, only the yaw-derived offset direction.
-
-Consequence for review: any earlier shot taken from the front invalidates "back-of-head"
-observations about hair — relevant to the hero-polish leads in
-[character-anatomy.md](character-anatomy.md) § Open questions.

@@ -1,7 +1,7 @@
 # Handoff — MERIDIAN CITY (`game/gta.html`)
 
 State cache. Read this and nothing else to know where the project stands; `journal/` is for humans.
-Renewed 2026-09-20: detail lives in the contract that owns it, not here — an open question is named
+Renewed 2026-09-28: detail lives in the contract that owns it, not here — an open question is named
 once below and written up in its owner file.
 
 ## Where we are
@@ -9,6 +9,7 @@ once below and written up in its owner file.
 - Gate: **all 24 checks green, exit 0**, verified@HEAD-2026-09-26 (≈24.6 s wall under SwiftShader; generation alone 5.66 s). Reference JSON and canonical commands: [contracts/harness.md](contracts/harness.md).
 - Last verified behaviour change: `clearance()` same-axis fix — opposing cars on the same road no longer wait for each other at a crossing ([right-of-way.md](contracts/right-of-way.md) C-ROW-4 amendment). `stuckFraction` 0.0302 → 0.0171, `yieldSeconds` 15114 → 4444.
 - Open defects in the city / traffic / camera layer: **none**. Unresolved *decisions* are not defects — see below.
+- Closed 2026-09-28: **chase-camera orientation** and **hero polish (6 leads)** dropped by decision — recorded as accepted-as-is in [docs/limitations.md](docs/limitations.md).
 - Tooling: `tools/lint-refs.sh` is the repo linter — anchor citations, router coverage, doc links, the pinned Three.js 0.160 API in `game/gta.html`, anchor format and documented prefixes, provenance labels on run metrics, numbered TODOs (exit 0/1), green since 2026-09-20. It also reports coverage — **most anchors are uncited**, because almost no comment in `game/gta.html` cites an invariant; the few citations that exist live in `AGENTS.md` examples.
 - Since that run, docs-only edits (`AGENTS.md` as entry point, this file as a cache) plus one comment fix in `game/gta.html`: the HUD traffic-multiplier snap is a **0.05** grid, not quarter steps.
 
@@ -18,19 +19,14 @@ The single list: name it here, write it up under *Open questions* in the owner c
 not accepted limitations — each waits on a decision or a measurement. Accepted-as-is items belong to
 [docs/limitations.md](docs/limitations.md); work with a known shape belongs to a `TODO(sNN)` comment.
 
-- **chase-camera orientation** → [contracts/camera.md](contracts/camera.md) § Open questions.
-- **hero polish (6 leads)** → [contracts/character-anatomy.md](contracts/character-anatomy.md) § Open questions.
 - **flat window surface vs. explicit namespace** → [contracts/harness.md](contracts/harness.md) § Open questions.
 - **`useLegacyLights` removal and recalibration** → [contracts/render-api.md](contracts/render-api.md) § Open questions. Owner: `TODO(s27)`.
 
 ## What next
 
-Hero visual polish — the 6-item list in [contracts/character-anatomy.md](contracts/character-anatomy.md) § Open questions.
+Nothing queued — both remaining open questions wait on their own decision: flat window surface vs explicit namespace ([contracts/harness.md](contracts/harness.md) § Open questions) and `useLegacyLights` removal + recalibration, owner `TODO(s27)` ([contracts/render-api.md](contracts/render-api.md) § Open questions).
 
-1. Re-shoot the hero and look at it: several items are **leads, not confirmed bugs**, and the harness cannot see polish either way.
-2. Fix by direct edits in `game/gta.html`.
-3. Re-shoot until clean, then run [../harness/check-city.js](../harness/check-city.js) (`npm --prefix harness i`, then `node harness/check-city.js`) and refresh the reference numbers in [contracts/harness.md](contracts/harness.md).
-4. Update [docs/architecture.md](docs/architecture.md) if functions moved; re-run [../tools/sync-ides.sh](../tools/sync-ides.sh) after any edit to `AGENTS.md` or methodology/ and commit the regenerated adapters with it.
+Standing workflow for any behaviour change: fix by direct edits in `game/gta.html`, verify (re-shoot where the harness cannot see), then run [../harness/check-city.js](../harness/check-city.js) (`npm --prefix harness i`, then `node harness/check-city.js`) and refresh the reference numbers in [contracts/harness.md](contracts/harness.md). Update [docs/architecture.md](docs/architecture.md) if functions moved; re-run [../tools/sync-ides.sh](../tools/sync-ides.sh) after any edit to `AGENTS.md` or methodology/ and commit the regenerated adapters with it.
 
 ## Watch out for
 
