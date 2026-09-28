@@ -261,10 +261,9 @@ function initRenderer(){
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.outputColorSpace=THREE.SRGBColorSpace;
-  // r155 changed the light default; keep r128-calibrated sun/hemi/moon intensities
-  // until the city is re-tuned. Deprecated in r165, still present in 0.160.x.
-  // TODO(s27): drop useLegacyLights and recalibrate sun/hemi/moon/lamp intensities.
-  renderer.useLegacyLights=true;
+  // r155+ ships with useLegacyLights=false by default — the physical light
+  // model is active. The r128-calibrated intensities were re-derived for it;
+  // see contracts/render-api.md C-API-7 and § Recalibration there.
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.05;
   document.body.appendChild(renderer.domElement);
@@ -481,7 +480,7 @@ function buildStreetlights(){
   // Смена visible меняет NUM_POINT_LIGHTS в шейдере и заставляет
   // Three.js пересобирать программы всех материалов — это давало фризы
   // на закате, когда лампа впервые загоралась.
-  for(let i=0;i<6;i++){const l=new THREE.PointLight(0xffb45a,0,26,2);l.visible=true;scene.add(l);lampLightPool.push(l);}
+  for(let i=0;i<6;i++){const l=new THREE.PointLight(0xffb45a,0,60,2);l.visible=true;scene.add(l);lampLightPool.push(l);}
 }
 
 /* ---------- cars ---------- */

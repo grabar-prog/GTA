@@ -185,11 +185,10 @@ if grep -qE 'THREE\.CapsuleGeometry[[:space:]]*=[[:space:]]*class' "$GAME"; then
   echo "  CapsuleGeometry polyfill still present — native in 0.160 (C-API-3)"; fail=1
 fi
 
-# (e) useLegacyLights is a stopgap and must have an owner (C-API-7)
+# (e) useLegacyLights has been removed (C-API-7, resolved 2026-09-28).
+# Any occurrence is a regression, not a missing TODO.
 if grep -qE 'renderer\.useLegacyLights' "$GAME"; then
-  if ! grep -qE 'TODO\(s[0-9]+\):.*useLegacyLights' "$GAME"; then
-    echo "  renderer.useLegacyLights without a TODO(sNN): owner (C-API-7)"; fail=1
-  fi
+  echo "  renderer.useLegacyLights present — removed 2026-09-28 (C-API-7)"; fail=1
 fi
 
 echo "  pinned 0.160.x via importmap, sRGBColorSpace, no r128 fallback"

@@ -42,6 +42,32 @@
     night: { top: 0x060c24, bot: 0x060a14 },
   };
 
+  // r155+ ships with useLegacyLights=false; the physical light model is what
+  // the renderer uses now (contracts/render-api.md C-API-7). The r128-era
+  // numbers in update() assume the legacy model, so each is paired with a
+  // factor:
+  //
+  //   · LIGHT_RECAL_DIR (π) — DirectionalLight and HemisphereLight: legacy
+  //     multiplied intensity by π before shading, physical does not, so π
+  //     restores the exact pre-flip irradiance. ACES compression makes the
+  //     *display* ratio smaller than π, but does not change the factor.
+  //
+  //   · LIGHT_RECAL_LAMP (60) — PointLight: the flag flip also swapped the
+  //     falloff from legacy saturate(1 - d/distance)^decay to a physical 1/d²
+  //     with a soft cutoff. The two curves differ by more than a scalar (the
+  //     physical one is much darker at 15–40 m, only slightly darker near the
+  //     source), so no single multiplier matches the old look at every
+  //     distance. The pool's own distance was widened from 26 to 60 in
+  //     game/gta.html to compensate the shape — the two numbers move together.
+  //
+  // Both values were fixed on 2026-09-28 by side-by-side rig screenshots
+  // (5 viewpoints × 4 times of day). The accepted post-r155 look is
+  // intentionally brighter at night and on mid-distance walls than the pre-r155
+  // baseline; the calibration is recorded in render-api.md § Recalibration.
+  const LIGHT_RECAL_DIR  = Math.PI;
+  const LIGHT_RECAL_LAMP = 60;
+
+
   function smoothstep(e0, e1, x) {
     const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
     return t * t * (3 - 2 * t);
@@ -303,7 +329,7 @@
 
       // Полусферический свет.
       if (hemi) {
-        hemi.intensity = lerp(0.75, 0.14, night);
+        hemi.intensity = lerp(0.75, 0.14, night) * LIGHT_RECAL_DIR;
         hemi.color.copy(_t);
       }
 
@@ -314,13 +340,13 @@
         sun.position.copy(_dir).multiplyScalar(160);
         sun.target.position.set(pp.x, 0, pp.z);
         sun.target.updateMatrixWorld();
-        sun.intensity = lerp(1.5, 0, night) * smoothstep(-0.05, 0.12, elev);
+        sun.intensity = lerp(1.5, 0, night) * smoothstep(-0.05, 0.12, elev) * LIGHT_RECAL_DIR;
         _warm.setHSL(lerp(0.13, 0.62, night), lerp(0.7, 0.85, night), lerp(0.6, 0.4, night));
         sun.color.copy(_warm);
       }
       if (moon) {
         moon.position.copy(_dir).multiplyScalar(-160);
-        moon.intensity = lerp(0.05, 0.28, night);
+        moon.intensity = lerp(0.05, 0.28, night) * LIGHT_RECAL_DIR;
       }
       if (moonMesh) {
         moonMesh.position.copy(_dir).multiplyScalar(-520);
@@ -340,7 +366,7 @@
       if (mats.tailMat)           mats.tailMat.emissiveIntensity           = 0.12 + night * 1.2;
 
       // Фонари — только интенсивность, visible не трогаем (см. contracts).
-      if (lampPool) for (const l of lampPool) l.intensity = lerp(0, 2.4, night);
+      if (lampPool) for (const l of lampPool) l.intensity = lerp(0, 2.4, night) * LIGHT_RECAL_LAMP;
 
       // HUD-хук. Никакого DOM внутри модуля.
       if (onTick) {

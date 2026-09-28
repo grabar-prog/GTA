@@ -12,7 +12,7 @@
 - **C-API-4** The hand-rolled merge emits UVs only when **all** parts supply them — keep that branch or the emissive window layer loses its `emissiveMap` source.
 - **C-API-5** Palette indices are taken modulo `.length`: `CAR_COLORS[i % CAR_COLORS.length]`, same for `PED_COLORS`. Reuse the finished materials rather than building colour per vehicle.
 - **C-API-6** The moon is a billboard: `PlaneGeometry(20, 20)`, positioned opposite the sun (`-dir * 520`), turned with `lookAt(camera)`, hidden at `elev >= 0.14`. Never a sphere.
-- **C-API-7** `renderer.useLegacyLights = true` is a **migration stopgap** (r155 changed the light default; without it every sun/hemi/moon intensity in this file is wrong). It is deprecated and must stay paired with a `TODO(sNN):` comment naming its removal. Do not drop it in a drive-by edit — that is a recalibration commit.
+- **C-API-7** *(resolved 2026-09-28)* `renderer.useLegacyLights` has been removed. The physical light model (r155+ default) is active; the r128-era intensities in `initRenderer()` / `assets/day-cycle.js` and the streetlight-pool radius in `buildStreetlights()` were re-derived for it by a side-by-side screenshot rig. The accepted calibration and its deviations from the pre-r155 baseline are recorded in § Recalibration below. Never re-introduce the flag or a `TODO(sNN): … useLegacyLights` comment.
 
 Verify: harness check 1 (`errs === []`) catches any constructor that failed at runtime; checks 4/5 cover moon visibility by day/night. `tools/lint-refs.sh` §7 checks the 0.160 entry points, the absence of r128 symbols, and that `useLegacyLights` carries its TODO.
 
@@ -56,15 +56,30 @@ Indexing the array object itself yields `undefined`, which silently degrades to 
 
 A `SphereGeometry(r = 18)` instead of the plane rendered as a white dome hanging over downtown mid-dusk — visible from every street, because a sphere has no facing to hide behind.
 
-### C-API-7 — `useLegacyLights = true` is a stopgap, not a decision
+### Recalibration — 2026-09-28
 
-r155 changed the light default (`useLegacyLights` went from `true` to `false` by default, then removed entirely in r165). Its practical effect on this file: at the old default, a `HemisphereLight(intensity = 0.7)` lit the scene roughly **π× brighter** than it does at the new one. The migration pinned `true` because re-tuning every sun / hemi / moon / streetlight-pool intensity is a separate commit — a visual change that wants its own screenshot review, not a mechanical r128→0.160 diff.
+r155 changed the light default (`useLegacyLights` went from `true` to `false` by default, then removed entirely in r165). The migration originally pinned the old default so the r128 look survived the 0.160 upgrade; C-API-7 asked for that stopgap to be removed once the numbers were re-derived. It was, on 2026-09-28.
 
-The rule exists so the stopgap does not become permanent:
+**Tool.** A scratchpad rig (`rig.js` in `%TEMP%\meridian-recal\`, never in the repo) captures 20 fixed-viewpoint PNGs — five viewpoints × four times of day — then `diff.js` prints mean-luminance and histogram-overlap per frame. The rig freezes the rAF loop and drives `MERIDIAN.dayTime` / `MERIDIAN.updatePlayer` explicitly, so two runs produce byte-comparable frames.
 
-- The `TODO(sNN):` comment in `initRenderer()` names the owner session.
-- `tools/lint-refs.sh` §7 fails if `renderer.useLegacyLights` appears without a matching `TODO(sNN): … useLegacyLights`.
-- Removing it is a **recalibration commit** — see this file's § Open questions. Do not roll it into an unrelated edit; every intensity in `initRenderer()` and `updateCycle()` is a candidate to change, and nothing in the harness can tell whether the new numbers are right.
+**Numbers changed.**
+
+| where | old (r128) | new (physical) | factor |
+| --- | --- | --- | --- |
+| `hemi.intensity` curve in `day-cycle.js` `update()` | `lerp(0.75, 0.14, night)` | same × `LIGHT_RECAL_DIR` | `π` |
+| `sun.intensity` curve | `lerp(1.5, 0, night) * smoothstep(...)` | same × `LIGHT_RECAL_DIR` | `π` |
+| `moon.intensity` curve | `lerp(0.05, 0.28, night)` | same × `LIGHT_RECAL_DIR` | `π` |
+| `lampLightPool[i].intensity` curve | `lerp(0, 2.4, night)` | same × `LIGHT_RECAL_LAMP` | `60` |
+| streetlight pool `PointLight(…, 0, distance, 2)` in `game/gta.html` | `distance = 26` | `distance = 60` | — |
+
+The first four are in `assets/day-cycle.js`, exported as `LIGHT_RECAL_DIR` / `LIGHT_RECAL_LAMP`. The pool radius is in `buildStreetlights()`; it is part of the same change because the flag flip also swapped the falloff shape (legacy `saturate(1 - d/distance)^decay` → physical `1/d²` with a soft cutoff), and no scalar alone reproduces the old curve — widening `distance` is what keeps the walls at 10–40 m lit without overexposing the pavement.
+
+**Acceptance.** Two columns. The rig's `diff.js` output against the pre-flip baseline:
+
+- 16 frames within 2 % mean luminance, histogram overlap ≥ 98 %. In practice several landed at exactly 0.00 % / 100 % (park-morning, topdown-*, west-border-road-*) — the π factor is exact for Directional/Hemisphere.
+- 4 frames **intentionally outside**: `downtown-{dawn,dusk,night}` and `park-dawn`, all brighter than the pre-flip baseline (+5…+10 %). That is the owner's chosen post-r155 look — night and mid-distance walls brighter than the old curve. This is an amendment, not a regression: the pre-flip PNGs are archived under `%TEMP%\meridian-recal\baseline\` for comparison, but they are not the acceptance target.
+
+The harness reference run in [harness.md](harness.md) is unaffected: `cycle.night.emissive` reads `glassMat.emissiveIntensity` (a shader constant, not routed through the light pipeline) and stayed `1.7`; `stats`, `spawn`, `sim`, `cam`, `shots` are all light-model-agnostic.
 
 ### Surface actually used (grep-verified across `game/gta.html` + `assets/models/hero.js`)
 
@@ -92,9 +107,8 @@ grep -nE 'three\.js/r128|three@0\.128|outputEncoding|THREE\.sRGBEncoding|physica
 grep -nE 'renderer\.outputColorSpace[[:space:]]*=[[:space:]]*THREE\.SRGBColorSpace' game/gta.html
 grep -nE 't\.colorSpace[[:space:]]*=[[:space:]]*THREE\.SRGBColorSpace'               game/gta.html
 
-# 3) useLegacyLights is temporary and has an owner
-grep -nE 'renderer\.useLegacyLights[[:space:]]*=[[:space:]]*true'   game/gta.html
-grep -nE 'TODO\(s[0-9]+\):.*useLegacyLights'                        game/gta.html   # must print a match
+# 3) useLegacyLights has been removed (C-API-7, resolved 2026-09-28)
+grep -nE 'renderer\.useLegacyLights'  game/gta.html   # must print nothing
 ```
 
 Then the real gate: `node harness/check-city.js`.
@@ -105,24 +119,3 @@ Then the real gate: `node harness/check-city.js`.
 - The `useLegacyLights` removal is an open question in this file's § Open questions; the numeric recalibration lands there, not here.
 - Where each symbol above lives in the file: [docs/architecture.md](../docs/architecture.md).
 
-## Open questions
-
-Unresolved items awaiting a decision — not invariants, not accepted limitations (those live in
-[docs/limitations.md](../docs/limitations.md)). The owner list is in [handsoff.md](../handsoff.md);
-the detail lives only here.
-
-### `useLegacyLights` removal and the intensity recalibration
-
-`renderer.useLegacyLights = true` (C-API-7) is a migration stopgap. Removing it is a
-**recalibration commit**, not a mechanical one: r155 changed the light default so that every
-intensity in this file means something different — a `HemisphereLight(0.7)` lights the scene
-roughly π× brighter at the old default than at the new one. Every candidate in `initRenderer()`
-(sun, moon, hemi, `toneMappingExposure`) and `updateCycle()` (sun/hemi/moon curves,
-`glassMat.emissiveIntensity`, streetlight-pool intensity) needs a new number and a fresh
-screenshot.
-
-Why it is still open: no reference frame says what the new numbers should be. The migration
-pinned the old default precisely so the visual output of the 0.160 upgrade matched r128; dropping
-the flag without re-tuning every intensity would be a silent, uncalibrated change to the look of
-the whole city, and nothing in the harness can see look. Decide by side-by-side night/day
-screenshots at fixed viewpoints; ask before committing.

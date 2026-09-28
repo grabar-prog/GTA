@@ -42,7 +42,7 @@ Section order inside the module (grep for the marker to locate):
 | `mergeGeometries` | hand-rolled merge, keeps per-part colour and UVs (C-API-4) |
 | `boxAt` `taperBox` `cylX/Z/Y` `sphAt` `capY/X/Z` `ebox` | positioned-primitive factories; each bakes its own `translate()` |
 | `angLerp` | shortest-arc yaw interpolation |
-| `initRenderer` | WebGL context, scene, camera, fog, sun/moon/hemi, shadows, `useLegacyLights` stopgap (C-API-7) |
+| `initRenderer` | WebGL context, scene, camera, fog, sun/moon/hemi, shadows (C-API-7 resolved — physical light model, § Recalibration in [contracts/render-api.md](../contracts/render-api.md)) |
 | `dayCycle.makeFacadeTexture` `dayCycle.makeWindowEmissive` `dayCycle.makeGroundTexture` | canvas textures (in `assets/day-cycle.js`), `colorSpace = SRGBColorSpace` (C-API-2) |
 | shared materials & palettes (`solidMat`, `glassMat`, `CAR_COLORS`, `PED_COLORS`) | index by `.length`, never by the array itself (C-API-5) |
 | `isRoad` `buildGround` | ground plane + UV squeeze (`GROUND_APRON`, world-constants) |
