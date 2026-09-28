@@ -1019,58 +1019,49 @@ boot().catch(err=>{
 });
 
 /* ---------- surface for the harness ---------- */
-// Classic <script> shares its top-level lexical scope with page.evaluate(), so
-// harness/check-city.js could read `cars`, `halfX`, `dayTime` by bare name.
-// ES modules do not: their top-level bindings are private to the module, and
-// `page.evaluate(() => cars.length)` fails with ReferenceError. Mirror the same
-// names onto window.
-//
-// Two kinds of binding, two mechanisms:
-//   · const objects/functions  → Object.assign, the harness mutates through the
-//     same reference (cars.push, player.pitch = …) and reads the same functions.
-//   · let                       → accessor on window. Plain assignment would
-//     snapshot the value at module-eval time: renderer is undefined until
-//     initRenderer() runs, dayTime ticks every frame, animate is replaced by
-//     the screenshot block.
+// The game runs as an ES module, so its top-level bindings are private to the
+// module and page.evaluate() cannot read `cars`, `player`, `dayTime` by bare
+// name. Mirror what harness/check-city.js actually needs under a single
+// window.MERIDIAN namespace. Two kinds of binding, two mechanisms:
+//   · const objects/functions  → plain properties, the harness mutates through
+//     the same reference (cars.push, player.pitch = …) and reads the same fns.
+//   · let                       → accessors, so the harness sees the current
+//     value, not a snapshot taken at module-eval time (renderer is undefined
+//     until initRenderer() runs; dayTime ticks every frame; animate is replaced
+//     by the screenshot block).
 //
 // Keep this list minimal: only what check-city.js reads or writes. Adding a new
-// top-level binding that the harness needs means adding it here too.
-//
-// When this contract grows past a few dozen names, promote it to a single
-// window.MERIDIAN namespace and update harness/check-city.js to match — the flat
-// list is a migration convenience, not a design.
-Object.assign(window, {
+// top-level binding the harness needs means adding it here too, or the check
+// dies with ReferenceError.
+const MERIDIAN = {
+  // World constants the assertions compare against
+  GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Data — the harness mutates through the same references
   cars, buildings, trees, lampLightPool, headlightPool, player,
-  // Asset factory instances (see the guard at the top of the module) + their namespaces
-  V, PED, MeridianVehicles, MeridianPedestrians,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
   // Frame drivers — the sim block steps the game without the rAF loop
   updateCars, updatePeds, updatePlayer, updateCycle, drawMinimap,
-  // Constants the assertions compare against
-  GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Material the day/night cycle check reads
   glassMat,
+  // Asset factory instances + their namespaces
+  V, PED, MeridianVehicles, MeridianPedestrians,
   // Namespace — the instance-buffer check builds a scratch Matrix4
   THREE,
-});
-Object.defineProperties(window, {
-  // trafficAI is a module-local `let` (created in boot). Expose via getter
-  // so page.evaluate() in check-city.js can call setTrafficMult().
+};
+Object.defineProperties(MERIDIAN, {
+  // let-bound module locals — accessors so the harness sees the live value
   trafficAI: {get:()=>trafficAI, configurable:true},
-  // let-bound, read-only from the harness
   renderer:  {get:()=>renderer,  configurable:true},
   scene:     {get:()=>scene,     configurable:true},
   camera:    {get:()=>camera,    configurable:true},
   moonMesh:  {get:()=>dayCycle?dayCycle.moonMesh:null, configurable:true},
   wheelMesh: {get:()=>wheelMesh, configurable:true},
   headMesh:  {get:()=>headMesh,  configurable:true},
-  // let-bound and written by the harness: `dayTime = 0.83` before cycle checks,
-  // `animate = () => {}` to freeze the loop for screenshots
   dayTime:   {get:()=>dayCycle?dayCycle.dayTime:0, set:v=>{if(dayCycle)dayCycle.dayTime=v;}, configurable:true},
   animate:   {get:()=>animate,   set:v=>{animate=v;},  configurable:true},
 });
+window.MERIDIAN = MERIDIAN;
 
 </script>
 </body>

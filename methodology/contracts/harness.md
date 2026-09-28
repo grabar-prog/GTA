@@ -184,26 +184,12 @@ The audit is a **pure simulation**: `updateCars(0.05)` in a loop with no renderi
 ### Maintenance notes
 
 - The harness was rebuilt during the traffic fix (it had been missing from the tree). Keep it in the repo — it is the only executable spec this project has.
-- Globals of the classic `<script>` are reachable from `page.evaluate()` by name: `scene`, `renderer`, `camera`, `player`, `dayTime`, `glassMat`, `lampLightPool`, `buildings`, `moonMesh`. Cheap diagnostics and time-travel (`dayTime = 0.83`) without touching game code.
+- The module's bindings reach `page.evaluate()` through a single `window.MERIDIAN`
+  namespace — `MERIDIAN.scene`, `MERIDIAN.player`, `MERIDIAN.dayTime`,
+  `MERIDIAN.glassMat`, `MERIDIAN.lampLightPool`, `MERIDIAN.buildings`,
+  `MERIDIAN.moonMesh`, … See `game/gta.html` § "surface for the harness".
+  Cheap diagnostics and time-travel (`MERIDIAN.dayTime = 0.83`) without touching
+  game code.
 - Agent shell (LM Studio): GUI spawn is allowed only for `node_modules` loaded from the scratchpad — see *Where it can actually run*.
 
 
-## Open questions
-
-Unresolved items awaiting a decision — not invariants, not accepted limitations (those live in
-[docs/limitations.md](../docs/limitations.md)). The owner list is in [handsoff.md](../handsoff.md);
-the detail lives only here.
-
-### flat window surface vs. explicit namespace
-
-`game/gta.html` runs as an ES module, so its top-level bindings are private to the module. The
-harness reaches them through a trailing block of `Object.assign(window, {…})` /
-`Object.defineProperties(window, {…})` calls — roughly 20 names (`cars`, `player`, `buildings`,
-`updateCars`, `dayTime`, `renderer` as an accessor, …). When that list grows past a comfortable
-size, promote it to a single `window.MERIDIAN = {game, world, helpers, …}` namespace and update
-[check-city.js](../../harness/check-city.js) to match, in one commit. There is no other consumer
-of the flat names today, so the change is mechanical — a rename, not a refactor.
-
-Decide when the list actually becomes awkward. Until then the flat names are the contract: any
-new state that check-city.js needs must be added to that trailing block or it dies with
-`ReferenceError`.

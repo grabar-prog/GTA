@@ -67,3 +67,4 @@ tools/lint-refs.sh.bak.*
 *.bak.*
 *.run_scripts_logs/
 patches
+ides

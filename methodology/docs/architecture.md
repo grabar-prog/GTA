@@ -24,9 +24,9 @@ Exact line numbers drift with every edit — grep for the marker instead.
 ## Script block, by responsibility
 
 `game/gta.html` runs as one `<script type="module">`. Top-level bindings are private to the module:
-the trailing `Object.assign(window, {…})` / `Object.defineProperties(window, {…})` block is the
-harness contract — any state `harness/check-city.js` needs must be added there or `page.evaluate()`
-dies with `ReferenceError`. See [contracts/harness.md](../contracts/harness.md) § Open questions.
+the trailing `const MERIDIAN = {…}` / `Object.defineProperties(MERIDIAN, {…})` block, attached to
+`window` at the end, is the harness contract — any state `harness/check-city.js` needs must be
+added there or `page.evaluate()` dies with `ReferenceError`.
 
 The hero rig is **not** in this file. `assets/models/hero.js` loads as a classic `<script>` before
 the module and exports `window.MainPerson.createHero({THREE, RoundedBoxGeometry})`; `buildCharacter()`
@@ -58,7 +58,7 @@ Section order inside the module (grep for the marker to locate):
 | `leaderAhead` `pathGap` `bodyGap` `bodyGapBehind` `approachLimit` `crossState` `clearance` `roomToClear` `arbitrateCrossings` `unstickCars` `updateCars` `writeCarInstances` | traffic simulation (right-of-way.md) |
 | `limbInstance` `updatePeds` `updateLights` `initMinimap` `drawMinimap` `animate` | per-frame update; lights + minimap throttled to ~15 Hz |
 | `boot` `lockMouse` `boot().catch(...)` | fixed step order; `boot().catch` must remain the last statement |
-| `Object.assign(window, {…})` / `Object.defineProperties(window, {…})` | harness surface (§ Open questions in [contracts/harness.md](../contracts/harness.md)) |
+| `window.MERIDIAN = {…}` / `Object.defineProperties(MERIDIAN, {…})` | harness surface ([contracts/harness.md](../contracts/harness.md)) |
 
 Determinism: `mulberry32` seeds a single `rng` stream; `rand()` and `pick()` draw from it in
 generation order, so the city is identical on every load — and any edit that adds or removes an

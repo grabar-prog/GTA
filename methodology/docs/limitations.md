@@ -33,28 +33,6 @@ frustum culling, which is why draw calls are viewpoint-dependent (see [performan
 *Cost to fix:* real LOD needs per-block meshes that can be swapped, which conflicts with the current design of
 one merged shell mesh + one glass mesh per building — the merge is what keeps the draw-call budget alive.
 
-## Camera
-
-**The chase camera reads as sitting in front of the hero.** The yaw-derived offset reuses
-`sin/cos(player.yaw)` along his facing direction while the following `lookAt` points back at him,
-so the rig is seen from the front. Accepted as-is 2026-09-28: the open question was closed without a
-comparison shot — no measurement says the reading is wrong, and flipping the sign changes how the
-game feels.
-
-*Cost to fix:* flip the sign of the yaw-derived offset (the C-CAM-2 height formula is not in
-question) and verify by comparison against the portrait rig's convention (`SH.cam(d)`, `d < 0` →
-behind his back; [../contracts/character-anatomy.md](../contracts/character-anatomy.md) § Verification).
-
-## Hero model
-
-**Hero polish leads were dropped unverified.** Six leads from earlier renders — helmet-like hair rim,
-light oval backpack, a sphere artefact between the legs (its named `sphAt` call no longer exists in
-`assets/models/hero.js`, so it is likely already gone), dark shin/knee patches, white mitt hands, arm
-chain hanging below the pelvis — were never checked against the current build. Dropped 2026-09-28
-without a re-shoot; the city harness cannot see polish either way.
-
-*Cost to fix / if picked up:* re-shoot first ([../contracts/character-anatomy.md](../contracts/character-anatomy.md) § Verification). Hands need roughly a 9 cm palm / ~18 cm length, a separate thumb plus four tapered finger capsules and a darker tint; hanging-arm fingertips should sit near waist height (~0.90–0.95 m), wrist at 1.02–1.06.
-
 ## Traffic model
 
 **Vehicles hold their lane and their distance; they never turn.** Lane keeping is `leaderAhead` +

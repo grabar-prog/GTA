@@ -17,6 +17,11 @@
  *     and a 17 m body wrapping at ±HALF still stands on ground (|nose| ≤ HALF + GROUND_APRON).
  * JSON report + screenshots go to %TEMP%\meridian-check\ — nothing is written into the repo.
  * Exit code 0 = all checks green.
+ *
+ * The page surface is window.MERIDIAN (game/gta.html, § "surface for the harness"): every
+ * page.evaluate() below opens with `const { … } = MERIDIAN;` and then works with local names.
+ * MERIDIAN.dayTime and MERIDIAN.animate are accessors, so they are written through the namespace
+ * rather than destructured — a destructure would snapshot the value at module-eval time.
  */
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -49,58 +54,62 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
   const genMs = Date.now() - t0;
 
   // ---- traffic audit at spawn time ---------------------------------------
-  const spawn = await page.evaluate(() => ({
-    cars: cars.length, GRID, HALF, ROAD, CELL,
-    linesUsed: [...new Set(cars.map(c => c.lineIdx))].sort((a, b) => a - b),
-    onBorderLine: cars.filter(c => c.lineIdx < 1 || c.lineIdx > GRID - 1).length,
-    outsideGroundNow: cars.filter(c => Math.abs(c.x) > HALF || Math.abs(c.z) > HALF).length,
-    maxCrossAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.x : c.z))),
-    // distance from the car centre to its own road centreline — must be exactly ROAD/4 (one lane)
-    maxLaneOffsetErr: Math.max(...cars.map(c => {
-      const cross = c.axis === 0 ? c.x : c.z;
-      return Math.abs(Math.abs(cross - (-HALF + c.lineIdx * CELL)) - ROAD / 4);
-    })),
-    // ---- fleet mix + instanced-buffer sizing ------------------------------------
-    // A semi rolls on four axles and an articulated bus on three, so a fixed N*4 buffer silently
-    // overflows: the extra instances stay identity matrices at the origin (a wheel floating in the
-    // sky). An *unwritten* instance always has translation.y === 0, a written one sits at radius.
-    APRON: GROUND_APRON,
-    // `kind` picks the geometry builder, so both bus bodies share it — count by type name as well
-    fleet: (() => { const f = {}; for (const c of cars) f[c.type.name] = (f[c.type.name] || 0) + 1; return f; })(),
-    kinds: (() => { const f = {}; for (const c of cars) f[c.kind] = (f[c.kind] || 0) + 1; return f; })(),
-    artic: cars.filter(c => c.type.artic).length,
-    longest: Math.max(...cars.map(c => c.type.L)),
-    wheelsWanted: cars.reduce((s, c) => s + c.wheels.length, 0),
-    wheelsCount: wheelMesh.count,
-    unwrittenWheels: (() => {
-      const m = new THREE.Matrix4(); let n = 0, wi = 0;
-      for (const c of cars) {
-        for (let k = 0; k < c.wheels.length; k++) {
-          if (c.active) { wheelMesh.getMatrixAt(wi, m); if (!(m.elements[13] > 0.2)) n++; }
-          wi++;
-        }
-      }
-      return n; })(),
-    unwrittenLenses: (() => {
-      const m = new THREE.Matrix4(); let n = 0, li = 0;
-      for (const c of cars) {
-        if (c.active) {
-          for (let k = 0; k < c.heads.length; k++) {
-            headMesh.getMatrixAt(li, m); if (!(m.elements[13] > 0.2)) n++;
-            li++;
+  const spawn = await page.evaluate(() => {
+    const { cars, GRID, HALF, ROAD, CELL, GROUND_APRON, wheelMesh, headMesh, THREE } = MERIDIAN;
+    return {
+      cars: cars.length, GRID, HALF, ROAD, CELL,
+      linesUsed: [...new Set(cars.map(c => c.lineIdx))].sort((a, b) => a - b),
+      onBorderLine: cars.filter(c => c.lineIdx < 1 || c.lineIdx > GRID - 1).length,
+      outsideGroundNow: cars.filter(c => Math.abs(c.x) > HALF || Math.abs(c.z) > HALF).length,
+      maxCrossAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.x : c.z))),
+      // distance from the car centre to its own road centreline — must be exactly ROAD/4 (one lane)
+      maxLaneOffsetErr: Math.max(...cars.map(c => {
+        const cross = c.axis === 0 ? c.x : c.z;
+        return Math.abs(Math.abs(cross - (-HALF + c.lineIdx * CELL)) - ROAD / 4);
+      })),
+      // ---- fleet mix + instanced-buffer sizing ----------------------------
+      // A semi rolls on four axles and an articulated bus on three, so a fixed N*4 buffer silently
+      // overflows: the extra instances stay identity matrices at the origin (a wheel floating in the
+      // sky). An *unwritten* instance always has translation.y === 0, a written one sits at radius.
+      APRON: GROUND_APRON,
+      // `kind` picks the geometry builder, so both bus bodies share it — count by type name as well
+      fleet: (() => { const f = {}; for (const c of cars) f[c.type.name] = (f[c.type.name] || 0) + 1; return f; })(),
+      kinds: (() => { const f = {}; for (const c of cars) f[c.kind] = (f[c.kind] || 0) + 1; return f; })(),
+      artic: cars.filter(c => c.type.artic).length,
+      longest: Math.max(...cars.map(c => c.type.L)),
+      wheelsWanted: cars.reduce((s, c) => s + c.wheels.length, 0),
+      wheelsCount: wheelMesh.count,
+      unwrittenWheels: (() => {
+        const m = new THREE.Matrix4(); let n = 0, wi = 0;
+        for (const c of cars) {
+          for (let k = 0; k < c.wheels.length; k++) {
+            if (c.active) { wheelMesh.getMatrixAt(wi, m); if (!(m.elements[13] > 0.2)) n++; }
+            wi++;
           }
-        } else {
-          li += c.heads.length;
         }
-      }
-      return n; })(),
-    // every body of the fleet must be inside the ground plane + apron right after generation
-    maxNoseAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.z : c.x) + c.hl)),
-    maxSideAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.x : c.z) + c.hw)),
-  }));
+        return n; })(),
+      unwrittenLenses: (() => {
+        const m = new THREE.Matrix4(); let n = 0, li = 0;
+        for (const c of cars) {
+          if (c.active) {
+            for (let k = 0; k < c.heads.length; k++) {
+              headMesh.getMatrixAt(li, m); if (!(m.elements[13] > 0.2)) n++;
+              li++;
+            }
+          } else {
+            li += c.heads.length;
+          }
+        }
+        return n; })(),
+      // every body of the fleet must be inside the ground plane + apron right after generation
+      maxNoseAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.z : c.x) + c.hl)),
+      maxSideAbs: Math.max(...cars.map(c => Math.abs(c.axis === 0 ? c.x : c.z) + c.hw)),
+    };
+  });
 
   // ---- long pure-logic traffic simulation (no rendering) ------------------
   const sim = await page.evaluate((STEPS) => {
+    const { cars, halfX, halfZ, updateCars, updatePeds, HALF } = MERIDIAN;
     let maxTravel = 0, maxCross = 0, wraps = 0, offRoad = 0, stuck = 0, maxNose = 0, maxSide = 0;
     const prevS = new Map(), prevCross = new Map();
     for (const c of cars) { prevS.set(c, c.s); prevCross.set(c, c.axis === 0 ? c.x : c.z); }
@@ -175,12 +184,12 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       perpFrames, sameFrames, maxPen: +maxPen.toFixed(3), maxPenEv,
       yieldSeconds: Math.round(yieldSeconds), heldNoseMax: +heldNoseMax.toFixed(2), gridlockAt,
       deadlockCars: [...frozenMax.values()].filter(v => v > FROZEN_S).length,
-
     };
   }, SIM_STEPS);
 
   // ---- camera rig + day/night cycle --------------------------------------
   const cam = await page.evaluate((PITCHES) => {
+    const { player, updatePlayer, camera } = MERIDIAN;
     const out = {};
     for (const p of PITCHES) {
       player.pitch = p; updatePlayer(3, 0);
@@ -190,42 +199,48 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
   }, PITCHES);
 
   const cycle = await page.evaluate(() => {
+    const { lampLightPool, glassMat, moonMesh, updateCycle } = MERIDIAN;
     const lampsOn = () => lampLightPool.filter(l => l.intensity > 0.01).length;
-    dayTime = 0.83; updateCycle(0);
+    MERIDIAN.dayTime = 0.83; updateCycle(0);
     const night = { emissive: +glassMat.emissiveIntensity.toFixed(2), moon: moonMesh.visible, lamps: lampsOn() };
-    dayTime = 0.42; updateCycle(0);
+    MERIDIAN.dayTime = 0.42; updateCycle(0);
     const day = { emissive: +glassMat.emissiveIntensity.toFixed(2), moon: moonMesh.visible, lamps: lampsOn() };
     return { night, day };
   });
 
   // ---- screenshots (rAF loop frozen, we drive the renderer ourselves) -----
   await page.evaluate(() => {
-    animate = () => {};                                        // stop the game loop
+    const { updateCycle } = MERIDIAN;
+    MERIDIAN.animate = () => {};                                // stop the game loop
     document.getElementById('start').classList.add('hidden');   // no intro panel over the canvas
     document.body.classList.add('playing');
-    dayTime = 8.5 / 24; updateCycle(0);
+    MERIDIAN.dayTime = 8.5 / 24; updateCycle(0);
   });
   const shoot = async (setup, name) => {
     await page.evaluate(setup);
     await page.screenshot({ path: path.join(OUT, name) });
   };
   await shoot(() => {
+    const { player, CELL, HALF, updatePlayer, renderer, scene, camera } = MERIDIAN;
     player.x = CELL * 4 + CELL / 2; player.z = -HALF + CELL * 3; player.yaw = 0; player.pitch = 0.15;
     updatePlayer(3, 0); renderer.render(scene, camera);
   }, 'player-view.png');
   await shoot(() => {
     // standing on the west border road (x=-HALF) looking along it: no traffic belongs there
+    const { player, HALF, ROAD, updatePlayer, renderer, scene, camera } = MERIDIAN;
     player.x = -HALF + ROAD / 4; player.z = -40; player.yaw = 0; player.pitch = 0.12;
     updatePlayer(3, 0); renderer.render(scene, camera);
   }, 'west-border-road.png');
   await shoot(() => {
     // tilted top-down over the west edge: every car must sit inside the asphalt square
+    const { scene, camera, renderer } = MERIDIAN;
     const fog = scene.fog; scene.fog = null;
     camera.position.set(-250, 175, -140); camera.lookAt(-250, 0, 90);
     renderer.render(scene, camera); scene.fog = fog;
   }, 'topdown-west-edge.png');
   await shoot(() => {
-    dayTime = 0.83; updateCycle(0);
+    const { player, CELL, HALF, updatePlayer, renderer, scene, camera, updateCycle } = MERIDIAN;
+    MERIDIAN.dayTime = 0.83; updateCycle(0);
     player.x = CELL * 4 + CELL / 2; player.z = -HALF + CELL * 3; player.yaw = 0; player.pitch = 0.15;
     updatePlayer(3, 0); renderer.render(scene, camera);
   }, 'night.png');
@@ -235,9 +250,10 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
   // curtains/bellows/axles either read as a truck or fall apart. `kind` picks the specimen.
   const shootVehicle = async (what, name) => {
     const found = await page.evaluate((what) => {
+      const { cars, updateCycle, camera, scene, renderer } = MERIDIAN;
       const pick = { semi: c => c.kind === 'semi', artic: c => !!c.type.artic, bus: c => c.kind === 'bus' && !c.type.artic };
       const c = cars.find(pick[what]); if (!c) return null;
-      dayTime = 8.5 / 24; updateCycle(0);
+      MERIDIAN.dayTime = 8.5 / 24; updateCycle(0);
       // local +Z is forward, +X to the right → stand off the kerb side, slightly behind the nose
       const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), sx = Math.cos(c.yaw), sz = -Math.sin(c.yaw);
       camera.position.set(c.x - fx * c.hl * 1.5 + sx * (c.hw + 6.5), 2.4, c.z - fz * c.hl * 1.5 + sz * (c.hw + 6.5));
@@ -256,6 +272,7 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
 
   // minimap: long vehicles must read as bars, hatchbacks as stubs
   await page.evaluate(() => {
+    const { cars, player, drawMinimap } = MERIDIAN;
     const c = cars.find(v => v.kind !== 'car') || cars[0];
     player.x = c.x; player.z = c.z; player.yaw = 0;
     drawMinimap();
@@ -265,6 +282,7 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
 
   // draw calls depend on frustum culling → always measure the same fixed viewpoint
   const stats = await page.evaluate(() => {
+    const { scene, player, CELL, HALF, updatePlayer, renderer, camera, buildings, trees } = MERIDIAN;
     let meshes = 0; scene.traverse(o => { if (o.isMesh) meshes++; });
     player.x = CELL * 4 + CELL / 2; player.z = -HALF + CELL * 3; player.yaw = 0; player.pitch = 0.15;
     updatePlayer(3, 0); renderer.render(scene, camera);
@@ -273,19 +291,17 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
              meshesInScene: meshes, buildings: buildings.length, trees: trees.length };
   });
 
-  
-  // ---- check 24: same-axis overlap after setTrafficMult round-trip --------
   // ---- check 24: same-axis overlap after setTrafficMult round-trip --------
   // MERIDIAN_CHECK24_V3
   // Проверяет, что после включения всех машин (setTrafficMult(2.5)) и
   // возврата (1.0) в сцене нет same-axis перекрытий. Cross-axis пары
   // (на перекрёстках) допускаются естественно, они проверяются check 21.
   const reseat = await page.evaluate(() => {
-    // Защита: trafficAI — module-local `let` в gta.html. Если по какой-то
-    // причине он не экспортирован на window, check 24 должен вернуть
-    // понятную ошибку, а не уронить harness с ReferenceError.
-    if (typeof trafficAI === 'undefined' || !trafficAI) {
-      return { error: 'trafficAI not exposed on window', atMax: null, backTo1: null };
+    const { cars, halfX, halfZ, trafficAI } = MERIDIAN;
+    // Защита: если surface block не выставил MERIDIAN.trafficAI, check 24
+    // должен вернуть понятную ошибку, а не уронить harness с ReferenceError.
+    if (!trafficAI) {
+      return { error: 'trafficAI not exposed on window.MERIDIAN', atMax: null, backTo1: null };
     }
 
     const overlapsAfter = (m) => {
