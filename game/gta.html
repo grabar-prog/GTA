@@ -352,6 +352,11 @@ const busGlassMat=new THREE.MeshStandardMaterial({vertexColors:true,emissive:0xf
 
 /* ---------- city data ---------- */
 const buildings=[],trees=[],cars=[],peds=[];
+// Raised surfaces the player can stand on, other than the sidewalks (which
+// are computed directly by groundHeight). Populated by parks: a sandpit top,
+// a monument step, a fountain kerb. Each entry is a rectangle in world XZ
+// plus the y its top sits at.
+const walkables=[];
 let streetlights=[],lampMesh=null,lampLightPool=[],lampGroup;
 // curNight хранит текущую ночь (0 — день, 1 — ночь), чтобы пул фар не
 // пересчитывал её отдельно от updateCycle. headlightPool — шесть SpotLight,
@@ -447,6 +452,7 @@ function buildPark(cx,cz){
     // основного rng) доступен флагом useMainRng: true.
   });
   for (const t of res.trees) addTree(t.x, t.z);
+  if (res.walkables) for (const w of res.walkables) walkables.push(w);
 }
 
 /* ---------- trees (instanced) ---------- */
@@ -763,7 +769,14 @@ function groundHeight(x, z) {
   if (xLineInterior && dxRoad <= swOuter && cz > BOX && cz < CELL - BOX) return SIDEWALK_H;
   if (zLineInterior && dzRoad <= swOuter && cx > BOX && cx < CELL - BOX) return SIDEWALK_H;
 
-  return 0;   // block interior / grass / off-map
+  // Raised surfaces registered by parks. Take the maximum — if two overlap,
+  // the player stands on the higher one, which is the intuitive choice.
+  let best = 0;
+  for (let i = 0; i < walkables.length; i++) {
+    const w = walkables[i];
+    if (Math.abs(x - w.x) < w.hw && Math.abs(z - w.z) < w.hd && w.h > best) best = w.h;
+  }
+  return best;   // 0 (grass / off-map) or the highest walkable, if any
 }
 
 /* ---------- update player + camera ---------- */
@@ -1080,7 +1093,7 @@ const MERIDIAN = {
   // World constants the assertions compare against
   GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Data — the harness mutates through the same references
-  cars, buildings, trees, lampLightPool, headlightPool, player,
+  cars, buildings, trees, walkables, lampLightPool, headlightPool, player,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
   // Frame drivers — the sim block steps the game without the rAF loop

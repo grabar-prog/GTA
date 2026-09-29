@@ -205,7 +205,11 @@
     }
     walls.push(boxAt(w + 2, 0.06, 0.07, 0, fh * 0.75, fz, fc));
 
-    return { walls, glassLit, glassDark, w: w + 2, d: d + 3.6, h: h + 2.2 };
+    // wallW / wallD — the size of the wall proper. w / d in the return are the
+    // visual bounding box (garden, chimney, roof overhang); the collider in
+    // add() uses wallW / wallD so it tracks what the player can see.
+    return { walls, glassLit, glassDark, wallW: w, wallD: d,
+             w: w + 2, d: d + 3.6, h: h + 2.2 };
   }
 
   /* --- 2. House --- */
@@ -253,7 +257,8 @@
     }
     walls.push(boxAt(w + 2, 0.06, 0.07, 0, fh * 0.75, fz, fc));
 
-    return { walls, glassLit, glassDark, w: w + 2, d: d + 3.2, h: h + 2.4 };
+    return { walls, glassLit, glassDark, wallW: w, wallD: d,
+             w: w + 2, d: d + 3.2, h: h + 2.4 };
   }
 
   /* --- 3. Rowhouse --- */
@@ -283,7 +288,9 @@
       }
     }
     walls.push(boxAt(units * unitW + 0.2, 0.4, d + 0.2, 0, 0.2, 0, PAL.trim));
-    return { walls, glassLit, glassDark, w: units * unitW + 0.2, d, h };
+    return { walls, glassLit, glassDark,
+             wallW: units * unitW - 0.05, wallD: d,
+             w: units * unitW + 0.2, d, h };
   }
 
   /* --- 4. Shop --- */
@@ -328,7 +335,7 @@
     walls.push(boxAt(w + 0.4, 0.55, d + 0.4, 0, h, 0, PAL.trim));
     walls.push(boxAt(2.5, 0.9, 1.6, -w / 4, h + 0.55, d / 4, PAL.ac));
 
-    return { walls, glassLit, glassDark, w, d, h };
+    return { walls, glassLit, glassDark, wallW: w, wallD: d, w, d, h };
   }
 
   /* --- 5. Residential --- */
@@ -372,7 +379,7 @@
     walls.push(cylY(1.3, 1.8, -w / 4, h + 1.3, 0, 12, PAL.water));
     walls.push(cylY(0.1, 4,  w / 4, h + 2.5, d / 4, 6, PAL.trim));
 
-    return { walls, glassLit, glassDark, w, d, h };
+    return { walls, glassLit, glassDark, wallW: w, wallD: d, w, d, h };
   }
 
   /* --- 6. Office --- */
@@ -412,7 +419,7 @@
     walls.push(boxAt(2.5, 0.9, 1.8, -w / 4, h + 0.6, d / 4, PAL.ac));
     walls.push(boxAt(2.5, 0.9, 1.8,  w / 4, h + 0.6, -d / 4, PAL.ac));
 
-    return { walls, glassLit, glassDark, w, d, h };
+    return { walls, glassLit, glassDark, wallW: w, wallD: d, w, d, h };
   }
 
   /* --- 7. Tower --- */
@@ -466,7 +473,10 @@
     walls.push(cylY(0.08, 7, 0, y2 + h2 + 3.5, 0, 6, PAL.antenna));
     walls.push(sphAt(0.28, 0.28, 0.28, 0, y2 + h2 + 7.2, 0, PAL.beacon, 8));
 
-    return { walls, glassLit, glassDark, w: w + 3.5, d: d + 3.5, h: y2 + h2 + 7.5 };
+    // The tower's visible plinth is w + 3.5 wide, but the wall proper — the
+    // bit the player should not walk through — is w / d.
+    return { walls, glassLit, glassDark, wallW: w, wallD: d,
+             w: w + 3.5, d: d + 3.5, h: y2 + h2 + 7.5 };
   }
 
   const BUILDERS = {
@@ -526,6 +536,15 @@
 
     const result = BUILDERS[finalType](THREE, geom, localRng, w || 12, d || 10, h || 20, isLit);
     const { walls, glassLit, glassDark, w: actualW, d: actualD } = result;
+    // The collider uses wallW / wallD, not the caller's w / d and not the
+    // visual bounding box actualW / actualD. Every builder clamps the input
+    // hint (a cottage asks for 15 m and builds a 10 m wall) and pads its
+    // visible extent with garden / roof / chimney. Both would give a collider
+    // that disagrees with the wall the player can see — an invisible barrier
+    // around the wall (input) or around the garden (bbox). wallW / wallD are
+    // the post-clamp wall dimensions; that is what blocks the player.
+    const wallW = (result.wallW != null ? result.wallW : actualW);
+    const wallD = (result.wallD != null ? result.wallD : actualD);
 
     const wallGeo = geom.mergeGeometries(walls);
     const shell = new THREE.Mesh(wallGeo, materials.solid);
@@ -561,7 +580,7 @@
     }
 
     if (buildings) {
-      buildings.push({ x: cx, z: cz, hw: (w || actualW) / 2, hd: (d || actualD) / 2 });
+      buildings.push({ x: cx, z: cz, hw: wallW / 2, hd: wallD / 2 });
     }
     return { mesh: shell, glassMesh: litMesh, glassDarkMesh: darkMesh,
              type: finalType, level: finalLevel };
