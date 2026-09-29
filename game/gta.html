@@ -537,6 +537,35 @@ function buildCars(){
     let along=rand(-HALF,HALF),tries=0;
     while(tries++<16&&(taken.some(o=>trafficAI.wrapGap(o.along,along)<o.hl+t.L/2+7)||trafficAI.inBox(along,t.L/2)))along=rand(-HALF,HALF);
     along=trafficAI.clearOfBox(along,t.L/2);         // final guarantee: never start inside a crossing
+    // Deterministic post-pass: nudge along the lane until this car's AABB
+    // no longer overlaps any already-placed car on a perpendicular axis.
+    // Uses no rng, so the seeded stream is unchanged. A perpendicular
+    // spawn overlap produced a permanent intersection deadlock (two cars
+    // frozen inside each other; unstick could not reverse either because
+    // a queue had pulled up behind).
+    {
+      const hw=t.W/2+0.15, hl=t.L/2+0.15;
+      const hx=axis===0?hw:hl, hz=axis===0?hl:hw;
+      const off=dir*ROAD/4;
+      for(let guard=0;guard<100;guard++){
+        const px=axis===0?-HALF+lineIdx*CELL+off:along;
+        const pz=axis===0?along:-HALF+lineIdx*CELL-off;
+        let conflict=false;
+        for(const p of plan){
+          const poff=p.dir*ROAD/4;
+          const qx=p.axis===0?-HALF+p.lineIdx*CELL+poff:p.along;
+          const qz=p.axis===0?p.along:-HALF+p.lineIdx*CELL-poff;
+          const phw=p.t.W/2+0.15, phl=p.t.L/2+0.15;
+          const phx=p.axis===0?phw:phl, phz=p.axis===0?phl:phw;
+          const ox=hx+phx-Math.abs(px-qx), oz=hz+phz-Math.abs(pz-qz);
+          if(ox>0&&oz>0){conflict=true;break;}
+        }
+        if(!conflict) break;
+        along+=6;
+        if(along>HALF) along-=2*HALF;
+        along=trafficAI.clearOfBox(along,t.L/2);
+      }
+    }
     taken.push({along,hl:t.L/2});
     plan.push({t,axis,dir,lineIdx,along,key});
   }
@@ -584,7 +613,12 @@ function buildCars(){
     const id=cars.length;
     const c={id,x,z,yaw,axis:v.axis,dir:v.dir,lineIdx:v.lineIdx,s:v.axis===0?z:x,
       kind:t.kind,type:t,mesh,wr:t.wr,lensScale:ll.s,
-      hw:t.W/2+.1,hl:t.L/2+.1,dmin:t.L+(t.kind==='car'?3.5:6),brakeRange:t.L+(t.kind==='car'?24:30),
+      // dmin was t.L + 6 for non-cars — a 23.5 m following distance for an
+      // artbus (L = 17.5), larger than the leader itself. A stopped vehicle
+      // sitting at exactly that gap froze the bus (approachLimit returns 0
+      // for free <= 0). New formula gives a braking distance from cruise
+      // (~8 m/s, dec ~4 → 8 m) plus margin, without a mobile wall.
+      hw:t.W/2+.1,hl:t.L/2+.1,dmin:t.L*0.55+4,brakeRange:t.L+(t.kind==='car'?24:30),
       cruise,speed:cruise*.85,acc:dr.acc,dec:dr.dec,spin:0,braking:false,yielding:false,
       // Junction state, rewritten every frame by arbitrateCrossings(): lead = the car we follow, xs = the
       // square we are engaged with, xGo = its verdict. stall/unstick/revDist are timers — patience at a

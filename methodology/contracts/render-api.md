@@ -56,7 +56,7 @@ Indexing the array object itself yields `undefined`, which silently degrades to 
 
 A `SphereGeometry(r = 18)` instead of the plane rendered as a white dome hanging over downtown mid-dusk — visible from every street, because a sphere has no facing to hide behind.
 
-### Recalibration — 2026-09-28
+### C-API-7 — Recalibration, 2026-09-28
 
 r155 changed the light default (`useLegacyLights` went from `true` to `false` by default, then removed entirely in r165). The migration originally pinned the old default so the r128 look survived the 0.160 upgrade; C-API-7 asked for that stopgap to be removed once the numbers were re-derived. It was, on 2026-09-28.
 

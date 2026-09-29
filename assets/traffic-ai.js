@@ -141,14 +141,22 @@
       let best = Infinity;
       for (const o of cars) {
         if (!o.active) continue;
-        if (o === c || (perpOnly && o.axis === c.axis)) continue;
+        if (o === c) continue;
+        if (perpOnly && o.axis === c.axis) continue;
         const dF = c.axis === 0 ? (o.z - c.z) * c.dir : (o.x - c.x) * c.dir;
         if (dF > 70) continue;
         const lat = c.axis === 0 ? Math.abs(o.x - c.x) : Math.abs(o.z - c.z);
         const latH = c.axis === 0 ? halfX(o) : halfZ(o);
         const oF   = c.axis === 0 ? halfZ(o) : halfX(o);
         if (lat > latH + c.hw + 0.2) continue;
-        if (dF + oF <= 0) continue;
+        // Skip cars whose centre is behind ours. This correctly handles the
+        // case where two same-axis cars have drifted into an overlap: the
+        // trailing car (negative dF) is not our forward obstacle; we
+        // accelerate away, the gap opens, the trailing car resumes normal
+        // following. Previously this was `dF + oF <= 0`, which counted an
+        // overlapping trailing car as a forward obstacle and locked both in
+        // place — unstickCars does not handle same-axis overlaps.
+        if (dF <= 0) continue;
         const d = dF - oF - c.hl;
         if (d < best) best = d;
       }
@@ -205,8 +213,16 @@
     function roomToClear(c) {
       const xs = c.xs;
       if (!xs) return true;
+
+      // Already fully past the intersection — nothing to keep clear.
+      if (xs.dc <= -c.hl - BOX) return true;
+
+      // Immediate leader stopped too close: if I stop behind it, my rear
+      // ends up inside the box.
       if (c.lead && c.lead.car.speed < 2 &&
           c.lead.d < xs.dc + BOX + c.hl + c.lead.car.hl + 2) return false;
+
+      // Perpendicular cars stopped on the far lane.
       for (const o of xs.list) {
         if (o === c || o.axis === c.axis || o.speed >= 1) continue;
         const dC = (laneCoord(o) - c.s) * c.dir;
@@ -214,6 +230,54 @@
         if (Math.abs(laneCoord(c) - o.s) > o.hl + c.hw) continue;
         return false;
       }
+
+      // Player or peds in the landing zone: entering would strand us in
+      // the box once we stop behind them.
+      const needClear = xs.dc + BOX + c.dmin + c.hl;
+      if (needClear > 0) {
+        if (pathGap(c, player.x, player.z, 0.5) < needClear) return false;
+        for (const p of peds) {
+          if (pathGap(c, p.x, p.z, 0.3) < needClear) return false;
+        }
+      }
+
+      // Queue capacity: even if the leader is still moving, we cannot know
+      // it will clear box 2 — it might be blocked by cross traffic, the
+      // player, or more cars than fit between the two intersections. Assume
+      // the worst case: the leader's nose ends up at box 2's near edge, and
+      // every car in front of us stops at dmin behind the next. If that
+      // hypothetical queue doesn't fit in the free segment between the two
+      // boxes, entering box 1 would leave us stuck inside it.
+      //
+      //   worstSpan = hl_A + sum(chain dmins) + hl_frontmost
+      //
+      // Walk the chain of leaders, accumulating. Stop when a car's nose is
+      // already past box 2's near edge (it is committed, not part of the
+      // queue we would be joining).
+      const segmentLen = CELL - 2 * BOX;
+      const box2Near = xs.dc + CELL - BOX;
+      // Queue length from A's tail to the frontmost car's nose:
+      //   2*hl_A + dmin_A + 2*hl_B + dmin_B + 2*hl_C + … + 2*hl_frontmost
+      // Every car contributes its full length; every gap contributes one
+      // dmin. v2 used (car.hl - prevHl) which undercounts by the sum of
+      // the chain's half-lengths and lets a long queue slip through.
+      let worstSpan = 2 * c.hl;
+      let prevDmin = c.dmin;
+      let cumulative = 0;
+      let cursor = c.lead;
+      let safety = 20;
+      while (cursor && safety-- > 0) {
+        cumulative += cursor.d;
+        if (cumulative > CELL) break;                // walked past box 2
+        const car = cursor.car;
+        if (car === c) break;                         // wrapped around
+        if (cumulative + car.hl >= box2Near) break;   // committed, doesn't count
+        worstSpan += prevDmin + 2 * car.hl;
+        prevDmin = car.dmin;
+        cursor = car.lead;
+      }
+      if (worstSpan > segmentLen - 0.5) return false;
+
       return true;
     }
 
@@ -307,6 +371,13 @@
         if (lead) target = Math.min(target, approachLimit(c, lead.d, c.dmin));
         c.yielding = !!c.xs && !c.xGo;
         if (c.yielding) target = Math.min(target, approachLimit(c, Math.max(c.xs.stop, 0), CROSS_DMIN));
+        // Perpendicular cars are arbitration's concern, not bodyGap's.
+        // When xGo = true we have already been given the right of way —
+        // letting bodyGap also count the perpendicular neighbour produced
+        // a permanent deadlock (two cars in the same box, each holding the
+        // other; unstick could not reverse because a queue was behind).
+        // sameOnly = c.xGo: only same-axis obstacles block us when we are
+        // allowed to move; perpendicular cars still block a held car.
         const bg = bodyGap(c, false);
         if (bg < Infinity) target = Math.min(target, approachLimit(c, bg, c.dmin));
         let gp = pathGap(c, player.x, player.z, 0.5);

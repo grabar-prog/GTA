@@ -26,7 +26,7 @@
 
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
-- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈24.6 s under SwiftShader (generation alone 7.73 s).
+- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈24 s under SwiftShader (generation alone 5.70 s).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
 - **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (23 checks) are different programs with different measurement points. Always state which version a number came from.
@@ -106,18 +106,18 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 This is the **current** harness (`harness/check-city.js`, 23 checks). The working tree at `cf4c702` carried one comment-only delta in `setTrafficMult`; behaviour is unchanged from HEAD, so these numbers describe `cf4c702` itself.
 
 ```
-verified@HEAD 2026-09-26 (24/24 PASS, exit 0, wall ≈ 24.6 s under SwiftShader)
+verified@HEAD 2026-09-29 (24/24 PASS, exit 0, wall ≈ 24 s under SwiftShader)
 
-genMs 5655   calls 173   tris 573448   geoms 1126
-meshesInScene 1214   buildings 321   trees 22   errs []
-fleet {bus:23, semi:26, pickup:18, artbus:11, suv:13, van:11, hatch:13, sedan:15} = 130 (whole park)
-kinds {bus:34, semi:26, car:70} = 130   artic 11   longest 17.5
+genMs 5703   calls 169   tris 573216   geoms 1103
+meshesInScene 1213   buildings 321   trees 29   errs []
+fleet {semi:27, bus:23, van:11, hatch:15, artbus:9, suv:13, pickup:17, sedan:15} = 130 (whole park)
+kinds {semi:27, bus:32, car:71} = 130   artic 9   longest 17.5
 spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetErr 0
 maxCrossAbs 236 · wheelsWanted/Count 646/646 · unwrittenWheels 0 · unwrittenLenses 0
 maxNoseAbs 279.51 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 697 · offRoadSamples 0 · stuckFraction 0.0171 · perpFrames 0 · sameFrames 76994
-       maxPen 2.75 (artbus#4 vs semi#110, t=0) · yieldSeconds 4444 · heldNoseMax 0
+       wraps 694 · offRoadSamples 0 · stuckFraction 0.0195 · perpFrames 0 · sameFrames 69084
+       maxPen 2.75 (bus#3 vs bus#82, t=2.7) · yieldSeconds 6589 · heldNoseMax 0
        gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps

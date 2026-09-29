@@ -66,6 +66,8 @@ Reference fleet (52 vehicles, weights-driven so composition shifts with the seed
 
 `kind` drives the driving profile from `DRIVE`: `car cruise [7,14]`, `bus [6.5,10.5]`, `semi [6,9]` m/s with matching accel/decel — a semi never out-accelerates a sedan.
 
+**(2026-09-29)** The following distance is `dmin = L*0.55 + 4` (previously `L + 6` for non-cars). The old formula gave a semi-trailer a 23.5 m following gap — wider than the leader’s own body — and a stopped vehicle sitting at exactly that distance triggered `approachLimit(free = 0)` and froze the bus in place indefinitely (free is measured bumper to bumper, so half a centimetre of rounding was enough). The new formula leaves about 8 m of braking distance from cruise plus margin.
+
 ### Geometry budget (why it's one mesh per body)
 
 Body = 1 merged mesh per vehicle; wheels and headlight/lens pairs live in shared `InstancedMesh`es across the whole park: **52 bodies + 4 instanced meshes instead of ~90 boxes**. Buildings follow the same discipline — a shell with vertex colours plus one glazing mesh shared by a 2×2 block cluster (≈12 meshes → 2). Break this and draw calls explode to ~4000, which presents exactly like a hang.

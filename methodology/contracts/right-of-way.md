@@ -12,6 +12,7 @@ Functions involved (`game/gta.html`): `crossState()`, `arbitrateCrossings()`, `c
 - **C-ROW-4** `clearance()` measures both legs to a single point P (the intersection of the lane axes), not "how far the opponent still has to go along its own line".
 - **C-ROW-5** All three liveliness guards are required: `roomToClear()`, the `STALL_HOLD` escape, and `unstickCars()` (`UNSTICK_S`). Remove any one and intersections swallow traffic within minutes.
 - **C-ROW-6** A held vehicle stops *before* the box it was denied: harness `sim.heldNoseMax ≤ 0.6` m overshoot (reference run: 0).
+- **C-ROW-7** *(2026-09-29)* `roomToClear(c)` must refuse to enter a box the car cannot clear. Two conditions block entry: (1) the player or a pedestrian standing in the landing zone (`xs.dc + BOX + c.dmin + c.hl` ahead of the nose); (2) a chain of leaders whose worst-case stopped span exceeds the free segment between this box and the next (`CELL - 2*BOX`) — even a still-moving leader may stop at box 2 (cross traffic, another yield, the player). A car already past the box (`xs.dc <= -c.hl - BOX`) returns `true` immediately and does not block.
 - **Scope** Vehicles never turn at an intersection — they keep lane and yield. Turning would need trajectory rebuilding this model does not have.
 
 Verify: harness checks 21–23 over the pure-sim audit; acceptance numbers in *Rationale → Acceptance numbers*.
@@ -51,6 +52,25 @@ Measuring along the opponent's own line produced `hold = tClear` for a car stand
 ### C-ROW-6 — A held vehicle stops *before* the box it was denied
 
 Negative/zero overshoot means nobody drove into a square they were told to wait out of; anything above `0.6` m means arbitration let a car through a denial.
+
+### C-ROW-7 — A car does not enter a box it cannot clear
+
+Two failure modes gave this rule its shape.
+
+- **The player (or a pedestrian) stands just beyond the crossing.** A car
+  enters the box, brakes at `dmin` from the obstacle, and stops inside the
+  box, blocking cross traffic until the player walks away. `roomToClear`
+  measures the landing zone (`xs.dc + BOX + c.dmin + c.hl` ahead of the
+  nose) and waits *before* the box instead.
+- **The leader is still moving but will stop at box 2** — cross traffic,
+  another yield, the player. Entering box 1 on the assumption the leader
+  will clear strands the car inside box 1. `roomToClear` walks the chain of
+  leaders up to box 2 and, in the worst case (leader’s nose at box 2’s near
+  edge, every car stopped at `dmin` behind the next), compares the span
+  against `CELL - 2*BOX`. If the chain would not fit, the car waits.
+
+A car already past the box no longer needs to keep it clear; `roomToClear`
+returns `true` immediately when `xs.dc <= -c.hl - BOX`.
 
 ### Acceptance numbers (16.7 min audit, ~12 s pure sim)
 
