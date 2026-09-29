@@ -101,14 +101,14 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (`verified@HEAD-2026-09-26`) above**)  — 2026-09-19, 24/24 PASS, exit 0, wall time ≈24.6 s)
+### Reference run (verified@HEAD-2026-09-29)
 
 This is the **current** harness (`harness/check-city.js`, 23 checks). The working tree at `cf4c702` carried one comment-only delta in `setTrafficMult`; behaviour is unchanged from HEAD, so these numbers describe `cf4c702` itself.
 
 ```
 verified@HEAD 2026-09-29 (24/24 PASS, exit 0, wall ≈ 24 s under SwiftShader)
 
-genMs 5703   calls 169   tris 573216   geoms 1103
+genMs 5630   calls 161   tris 570832   geoms 1169
 meshesInScene 1213   buildings 321   trees 29   errs []
 fleet {semi:27, bus:23, van:11, hatch:15, artbus:9, suv:13, pickup:17, sedan:15} = 130 (whole park)
 kinds {semi:27, bus:32, car:71} = 130   artic 9   longest 17.5
@@ -116,8 +116,8 @@ spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetE
 maxCrossAbs 236 · wheelsWanted/Count 646/646 · unwrittenWheels 0 · unwrittenLenses 0
 maxNoseAbs 279.51 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 694 · offRoadSamples 0 · stuckFraction 0.0195 · perpFrames 0 · sameFrames 69084
-       maxPen 2.75 (bus#3 vs bus#82, t=2.7) · yieldSeconds 6589 · heldNoseMax 0
+       wraps 691 · offRoadSamples 0 · stuckFraction 0.022 · perpFrames 0 · sameFrames 68852
+       maxPen 2.75 (semi#4 vs artbus#69, t=0.7) · yieldSeconds 6557 · heldNoseMax 0
        gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps

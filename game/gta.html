@@ -587,10 +587,14 @@ function buildCars(){
     const paint=PAL.car[(rng()*PAL.car.length)|0];
     const tint=t.kind==='bus'?PAL.stripe[(rng()*PAL.stripe.length)|0]
              :t.kind==='semi'?PAL.curtain[(rng()*PAL.curtain.length)|0]:paint;
+    // Right-hand traffic: the car drives on the right side of the centreline.
+    // In a Y-up right-handed frame, a car facing +Z has its right at -X, and
+    // a car facing +X has its right at +Z. Signs flipped from the previous
+    // left-hand version.
     const off=v.dir*ROAD/4; // lane offset from centerline
     let x,z,vx=0,vz=0;
-    if(v.axis===0){x=-HALF+v.lineIdx*CELL+off;z=v.along;vz=v.dir;}
-    else{z=-HALF+v.lineIdx*CELL-off;x=v.along;vx=v.dir;}
+    if(v.axis===0){x=-HALF+v.lineIdx*CELL-off;z=v.along;vz=v.dir;}
+    else{z=-HALF+v.lineIdx*CELL+off;x=v.along;vx=v.dir;}
     // Forward is local +Z, so yaw must come from the travel vector. The old table (yaw=PI for dir>0
     // on the z-axis) pointed every car against its motion — invisible with two boxes, obvious now.
     const yaw=Math.atan2(vx,vz);

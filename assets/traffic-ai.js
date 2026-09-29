@@ -111,9 +111,13 @@
 
     /* ---- intersection helpers (полный комментарий был в gta.html) ---- */
     const lineCoord = k => -HALF + k * CELL;
-    const laneCoord = v => lineCoord(v.lineIdx) + (v.axis === 0 ? v.dir : -v.dir) * ROAD / 4;
+    // Must match the lane offset chosen in buildCars(). Right-hand traffic.
+    const laneCoord = v => lineCoord(v.lineIdx) + (v.axis === 0 ? -v.dir : v.dir) * ROAD / 4;
     const halfX = v => v.axis === 0 ? v.hw : v.hl;
     const halfZ = v => v.axis === 0 ? v.hl : v.hw;
+    // Yield to the vehicle geometrically on your right. This is a priority
+    // rule, not a traffic-side rule — it holds whether the city drives on the
+    // left or the right. Do not flip it when switching lane offsets.
     const fromRight = (c, o) => o.dir === (c.axis === 0 ? -c.dir : c.dir);
 
     function leaderAhead(c) {
