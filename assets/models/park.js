@@ -557,7 +557,7 @@
   function buildPlayground(rng, level, size) {
     const p = [], trees = [];
     const R = size / 2;
-    p.push(boxAt(size + 4, 0.10, size + 4, 0, 0.05, 0, PAL.grass[1]));
+    p.push(boxAt(size, 0.10, size, 0, 0.05, 0, PAL.grass[1]));
     p.push(boxAt(size, 0.12, size, 0, 0.06, 0, PAL.rubberB));
     p.push(boxAt(size - 2, 0.13, size - 2, 0, 0.065, 0, 0x304a70));
 
@@ -831,7 +831,10 @@
     const p = [], trees = [];
     const W = size, D = size * 0.85;
     const hW = W / 2, hD = D / 2;
-    p.push(boxAt(W + 6, 0.10, D + 6, 0, 0.05, 0, PAL.grass[1]));
+    // Grass fills the block: square W+2 × W+2 so it reaches the sidewalk on
+    // both axes. Pave stays rectangular (W × D); grass just extends further
+    // on the Z axis to close the gap.
+    p.push(boxAt(W + 2, 0.10, W + 2, 0, 0.05, 0, PAL.grass[1]));
     p.push(boxAt(W, 0.12, D, 0, 0.06, 0, PAL.pave[0]));
 
     const tileS = 1.4;
