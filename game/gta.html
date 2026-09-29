@@ -625,7 +625,7 @@ function buildPeds(){
 
 // The hero: a physics body plus the rig that draws him (built at the bottom of this section).
 
-const player={x:CELL*4+CELL/2,z:-HALF+CELL*3,heading:0,yaw:0,pitch:0.15,vx:0,vz:0,stagger:0};
+const player={x:CELL*4+CELL/2,z:-HALF+CELL*3,heading:0,yaw:0,pitch:0.15,vx:0,vz:0,stagger:0,y:0};
 
 let charGroup=null,hero=null;
 
@@ -731,6 +731,41 @@ function resolvePeds(px,pz,r){
   return {x:px,z:pz};
 }
 
+/* ---------- walkable-surface height ---------- */
+// Sidewalks sit one slab above the road: makeSidewalkGeometry in
+// assets/models/road.js builds a BoxGeometry of height 0.15 whose top is at
+// y = 0.15. Roads and intersections are at y = 0. Anywhere else (grass, block
+// interior, off-map) reads as 0 so the player is not lifted inside a building.
+// The test mirrors what the sidewalk generator does:
+//   · within the strip [ROAD/2, ROAD/2 + SIDEWALK] of an interior road line,
+//   · along the segment (past the intersection box: BOX..CELL-BOX),
+//   · and only on lines 1..GRID-1 — lines 0 and GRID carry no sidewalk.
+// The border roads of the map are on lines 0 / GRID, hence excluded.
+const SIDEWALK_H = 0.15;
+function groundHeight(x, z) {
+  const roadHalf = ROAD / 2;              // 8
+  const swOuter  = roadHalf + SIDEWALK;   // 11.5
+  const BOX      = roadHalf;              // intersection half-extent
+
+  const cx = ((x + HALF) % CELL + CELL) % CELL;
+  const cz = ((z + HALF) % CELL + CELL) % CELL;
+  const dxRoad = Math.min(cx, CELL - cx);
+  const dzRoad = Math.min(cz, CELL - cz);
+
+  // On the road (including any intersection): y = 0
+  if (dxRoad < roadHalf || dzRoad < roadHalf) return 0;
+
+  const lineIdxX = Math.round((x + HALF) / CELL);
+  const lineIdxZ = Math.round((z + HALF) / CELL);
+  const xLineInterior = lineIdxX >= 1 && lineIdxX <= GRID - 1;
+  const zLineInterior = lineIdxZ >= 1 && lineIdxZ <= GRID - 1;
+
+  if (xLineInterior && dxRoad <= swOuter && cz > BOX && cz < CELL - BOX) return SIDEWALK_H;
+  if (zLineInterior && dzRoad <= swOuter && cx > BOX && cx < CELL - BOX) return SIDEWALK_H;
+
+  return 0;   // block interior / grass / off-map
+}
+
 /* ---------- update player + camera ---------- */
 const _push={x:0,z:0,px:0,pz:0,vx:0,vz:0};
 function updatePlayer(dt,t){
@@ -765,16 +800,25 @@ function updatePlayer(dt,t){
 
   const speed=Math.hypot(player.vx,player.vz);
   if(speed>0.4)player.heading=angLerp(player.heading,Math.atan2(player.vx,player.vz),1-Math.pow(0.0005,dt));
-  charGroup.position.set(player.x,0,player.z);charGroup.rotation.y=player.heading;
+  // Step onto sidewalks: pick up the walkable-surface height at the new x,z
+  // and lift the character + camera with it. No gravity, no smoothing — the
+  // delta is 15 cm, and interpolating it looks worse than snapping it.
+  player.y=groundHeight(player.x,player.z);
+  charGroup.position.set(player.x,player.y,player.z);charGroup.rotation.y=player.heading;
 
   if(hero)hero.update(dt,{speed,sprint});   // rig lives in assets/main_person.js
 
   const dist=sprint?7.4:6.2, cp=Math.cos(player.pitch),sp=Math.sin(player.pitch);
   // Floor clamp: looking up drops the orbit rig below the asphalt (pitch < -0.2 put the camera at
   // y≈-0.4 and you could see straight under the map).
-  const tx=player.x+Math.sin(player.yaw)*dist*cp, ty=Math.max(0.35,1.9+dist*sp), tz=player.z+Math.cos(player.yaw)*dist*cp;
+  // Camera ride height is measured from the walkable surface, not world zero:
+  // the 0.35 floor clamp still keeps the rig above the asphalt when looking
+  // up, and player.y shifts the whole rig up when the player is on a sidewalk.
+  const tx=player.x+Math.sin(player.yaw)*dist*cp,
+        ty=player.y+Math.max(0.35,1.9+dist*sp),
+        tz=player.z+Math.cos(player.yaw)*dist*cp;
   camera.position.lerp(new THREE.Vector3(tx,ty,tz),1-Math.pow(0.0015,dt));
-  camera.lookAt(player.x,1.4,player.z);
+  camera.lookAt(player.x,player.y+1.4,player.z);
 
   sun.target.position.set(player.x,0,player.z);sun.target.updateMatrixWorld();
 }
