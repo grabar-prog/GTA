@@ -526,6 +526,14 @@
       let k = 1;
       if (blink.startAt < 0) {
         if (t >= blink.nextAt) blink.startAt = t;
+      } else if (t < blink.startAt) {
+        // Defensive: some caller rewound t under the blink (this used to be
+        // the walk↔run swap in update(); it no longer reaches breathe(), but
+        // keep the net for any future caller). Abandon this blink, reschedule
+        // from the current time. Without this, (t - startAt) goes hugely
+        // negative and k jumps to ~800, sending the eyelid metres upward.
+        blink.startAt = -1;
+        blink.nextAt = t + 1.5 + Math.random() * 3;
       } else {
         const q = (t - blink.startAt) / blink.duration;
         if (q >= 1) {
@@ -542,12 +550,18 @@
     }
 
     /* ---- speed-driven update (gta's entry point) ------------------------- */
-    let tAcc = 0, lastCfg = null;
+    // tAcc drives the gait phase and is deliberately rescaled on a walk↔run
+    // swap (below) so the leg phase stays continuous. clock is a separate
+    // monotonic accumulator used only by breathe() — blink state must not
+    // see the rescale, or (t - startAt) rewinds mid-blink and the eyelid
+    // flies off the head.
+    let tAcc = 0, lastCfg = null, clock = 0;
     function update(dt, st) {
       const d = Math.min(dt, 0.05);
       const speed = (st && st.speed) || 0;
       const sprint = !!(st && st.sprint);
       tAcc += d;
+      clock += d;
 
       let pose;
       if (speed < 0.3) {
@@ -565,7 +579,7 @@
         pose = poseGait(tAcc, cfg, sprint);
       }
       applyPose(pose);
-      breathe(tAcc, d);
+      breathe(clock, d);
       return pose;
     }
 
