@@ -364,6 +364,9 @@
       if (mats.solidMat)          mats.solidMat.emissiveIntensity          = night * 0.02;
       if (mats.headMat)           mats.headMat.emissiveIntensity           = night * 3.0;
       if (mats.tailMat)           mats.tailMat.emissiveIntensity           = 0.12 + night * 1.2;
+      // Park glow parts: japanese windows and lanterns, amphitheater and
+      // market lamps. Off during the day, warm at night.
+      if (mats.parkGlowMat)       mats.parkGlowMat.emissiveIntensity       = night * 1.8;
 
       // Фонари — только интенсивность, visible не трогаем (см. contracts).
       if (lampPool) for (const l of lampPool) l.intensity = lerp(0, 2.4, night) * LIGHT_RECAL_LAMP;

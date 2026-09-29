@@ -403,9 +403,12 @@
         p.push(cylY(0.10, 0.12, 2.2, thx + dx, 1.10, thz + dz, 6, PAL.wood[0]));
     p.push(boxAt(4.8, 0.14, 3.8, thx, 2.25, thz, PAL.wood[1]));
     pitchedRoof(p, thx, thz, 4.8, 3.8, 2.32, 1.0, 0x4a3a2a, 0.5, 0x2a1e18);
-    p.push(boxAt(0.10, 1.8, 3.0, thx + 2.35, 1.10, thz, 0xf0e8d0));
+    // Shoji wall — a solid panel. Previously 0.10 thick and placed 0.35 m
+    // outside the post line, which read as a thin, ghostly pane. Now 0.22
+    // thick, centred on the eastern post line, so it looks like a wall.
+    p.push(boxAt(0.22, 1.80, 3.00, thx + 2.05, 1.10, thz, 0xe8d4a0));
     for (let i = 0; i < 4; i++)
-      p.push(boxAt(0.12, 0.06, 3.0, thx + 2.35, 0.30 + i * 0.45, thz, PAL.wood[0]));
+      p.push(boxAt(0.26, 0.06, 3.00, thx + 2.05, 0.30 + i * 0.45, thz, PAL.wood[0]));
 
     const stepPath = [
       [-12.5,  0.2], [-11.1, -0.2], [-9.7, -0.6],
@@ -465,10 +468,12 @@
       trees.push({ x: cx, z: cz, scale: 0.85, hue: PAL.cherry });
     trees.push({ x: -R + 3, z: 6, scale: 0.8, hue: PAL.cherry });
     trees.push({ x: -R + 4, z: 9, scale: 0.8, hue: PAL.cherry });
+    // Every tree in the japanese garden is sakura — pink canopy. The green
+    // palette is used elsewhere in the city; here it is cherry only.
     for (const [cx, cz] of [[-R + 8, R - 3], [-R + 12, R - 3.5], [0, R - 3], [4, R - 3.5], [8, R - 3]])
-      trees.push({ x: cx, z: cz, scale: 0.85, hue: PAL.grass[(cx + cz) & 1 ? 0 : 1] });
+      trees.push({ x: cx, z: cz, scale: 0.85, hue: PAL.cherry });
     for (const [cx, cz] of [[-4, -R + 3], [0, -R + 3.2], [4, -R + 3]])
-      trees.push({ x: cx, z: cz, scale: 0.85, hue: PAL.grass[0] });
+      trees.push({ x: cx, z: cz, scale: 0.85, hue: PAL.cherry });
 
     const bambooGrove = [[R - 4, -1], [R - 3.6, 0.5], [R - 4.4, 0.8],
                          [R - 3.4, -1.4], [R - 4.1, 1.5], [R - 3.1, 0.2]];
@@ -540,7 +545,12 @@
     p.push(sphAt(0.35, 0.4, 0.35, 0, 1.50, 0, PAL.stone[2], 8));
     p.push(cylY(0.95, 0.95, 0.03, 0, 1.31, 0, 16, PAL.waterL));
     p.push(cylY(1.05, 1.05, 0.03, 0, 0.55, 0, 16, PAL.waterL));
-    const dc = (R - 2) * 0.7071;
+    // Benches sit at the four outer hedge corners, backs against the corner.
+    // The outer hedge is centred at R-4 = 15 with thickness 0.55, so its
+    // corner region is [14.725, 15.275]². Anchor at R-4.7 = 14.3 puts the
+    // 45°-rotated back rail (1.8 m long) partially inside that region,
+    // which reads as the back resting against the corner of the maze.
+    const dc = R - 4.7;
     bench(p, -dc, -dc, Math.PI / 4);
     bench(p,  dc, -dc, -Math.PI / 4);
     bench(p, -dc,  dc, 3 * Math.PI / 4);
@@ -690,19 +700,22 @@
       }
     }
 
+    // Sloped sections — 0.22-thick deck with 0.12-thick side walls.
+    // Previously the deck was 0.12 and the rails 0.06, both under a pixel
+    // at typical viewing distance, so the slide read as a translucent pane.
     const slideTilt = 0.54, slideL = 3.6;
     const slideTopZ = tD / 2;
     const slideMidZ = t2z + slideTopZ + (slideL / 2) * Math.cos(slideTilt);
     const slideMidY = platformY - (slideL / 2) * Math.sin(slideTilt);
     for (const off of [-0.5, 0.5]) {
-      const sg = new THREE.BoxGeometry(0.7, 0.12, slideL);
+      const sg = new THREE.BoxGeometry(0.7, 0.22, slideL);
       sg.rotateX(slideTilt);
       sg.translate(t2x + off, slideMidY, slideMidZ);
       p.push({ geo: sg, color: off < 0 ? PAL.pgYellow : PAL.pgGreen });
       for (const sx of [-0.36, 0.36]) {
-        const rr = new THREE.BoxGeometry(0.06, 0.30, slideL);
+        const rr = new THREE.BoxGeometry(0.12, 0.45, slideL);
         rr.rotateX(slideTilt);
-        rr.translate(t2x + off + sx, slideMidY + 0.10, slideMidZ);
+        rr.translate(t2x + off + sx, slideMidY + 0.14, slideMidZ);
         p.push({ geo: rr, color: PAL.pgRed });
       }
     }
@@ -953,6 +966,209 @@
     return r < 0.4 ? 'market' : (r < 0.75 ? 'japanese' : 'playground');
   }
 
+  // Local-space walkable and blocking rectangles for the specific park types
+  // that need them. Called from add() once the builder has run; not per
+  // builder, so the six build functions stay untouched.
+  //
+  //   walkables — raised surfaces the player stands on. Currently the bridge
+  //               in the japanese garden and the stage of the amphitheater.
+  //               Bridge samples overlap in X; groundHeight() picks the
+  //               rectangle nearest to the player's centre, so the current
+  //               arch section wins over the peak.
+  //   blockers  — solid structures. Playhouse, towers, stalls, pagoda,
+  //               teahouse, conservatory, fountain. The player collides with
+  //               these exactly as with city buildings.
+  function collectWalkablesAndBlockers(type, size) {
+    const R = size / 2;
+    const walkables = [], blockers = [];
+
+    if (type === 'japanese') {
+      const px = 4, pz = -3, bspan = 12, bWidth = 1.6, segs = 12;
+      const deckEndY = 0.26, bArch = 1.3;
+      for (let i = 0; i < segs; i++) {
+        const t = (i + 0.5) / segs;
+        const sx = px - bspan / 2 + t * bspan;
+        const dy = deckEndY + Math.sin(t * Math.PI) * bArch;
+        walkables.push({
+          x: sx, z: pz,
+          hw: bspan / segs / 2 + 0.02,   // slight overlap with neighbour
+          hd: bWidth / 2,
+          h: dy + 0.06,                   // top of the 0.12-thick deck
+        });
+      }
+      blockers.push({ x: R - 6, z: -R + 6, hw: 2.75, hd: 2.75 });   // pagoda — four walls
+      // Teahouse: posts and a gable roof, one shoji wall on the east face.
+      // The wall blocks; the rest of the teahouse — bays, roof supports,
+      // platform — is walkable through.
+      blockers.push({ x: -R + 7 + 2.35, z: -R + 5, hw: 0.10, hd: 1.5 });
+    } else if (type === 'playground') {
+      walkables.push({ x: -10, z: 4, hw: 3.0, hd: 3.0, h: 0.18 });  // sandpit
+      blockers.push({ x: -2, z: -8, hw: 1.2, hd: 1.2 });            // tower 1
+      blockers.push({ x:  3, z: -8, hw: 1.2, hd: 1.2 });            // tower 2
+      blockers.push({ x: 10, z:  0, hw: 1.6, hd: 1.6 });            // playhouse
+      // Double slide — sloped deck from tower 2 (z = -6.8) down to the
+      // landing pad (z = -3.72). Not walkable; the player goes around it.
+      blockers.push({ x:  3, z: -5.3, hw: 1.0, hd: 1.7 });
+    } else if (type === 'market') {
+      blockers.push({ x: 0, z: 0, hw: 2.8, hd: 2.8 });              // fountain — solid stone
+      // Market stalls: posts and awning stay walkable, but the counter
+      // (1.9 x 1.0 m at +z local) and the striped back panel (2.0 x 0.05 m
+      // at -z local) block. After the yaw rotation those two rectangles land
+      // as follows:
+      //   west row (cx = -13, yaw = +pi/2):
+      //     counter  at world x = -13 + 0.35 = -12.65, hw 0.45, hd 0.90
+      //     back     at world x = -13 - 0.97 = -13.97, hw 0.05, hd 1.00
+      //   east row (cx = +13, yaw = -pi/2):
+      //     counter  at world x = +12.65, back at +13.97
+      for (const zz of [-9.6, -3.2, 3.2, 9.6]) {
+        blockers.push({ x: -13.97, z: zz, hw: 0.05, hd: 1.00 });   // west back
+        blockers.push({ x: -12.65, z: zz, hw: 0.45, hd: 0.90 });   // west counter
+        blockers.push({ x:  13.97, z: zz, hw: 0.05, hd: 1.00 });   // east back
+        blockers.push({ x:  12.65, z: zz, hw: 0.45, hd: 0.90 });   // east counter
+      }
+    } else if (type === 'botanical') {
+      // Central three-tier urn: base is a 1.2 m radius cylinder, upper tiers
+      // are narrower. One blocker covers the base and everything above it.
+      blockers.push({ x: 0, z: 0, hw: 1.3, hd: 1.3 });
+      // Conservatory is a glass roof on thin posts, no walls. Walkable through.
+    } else if (type === 'maze') {
+      // Three concentric square hedge rings, each with a gap on a different
+      // side (W, E, S). Ring radius matches the renderer's R-4 / R-7.5 /
+      // R-11; hedge thickness HT = 0.55; gap width 2.6. Every segment
+      // becomes an AABB blocker, gates stay open.
+      const HT = 0.55;
+      const gapHalf = 1.3;
+      const rings = [
+        { r: R - 4.0,  gap: 'W' },
+        { r: R - 7.5,  gap: 'E' },
+        { r: R - 11.0, gap: 'S' },
+      ];
+      const addWall = (axis, crossPos, min, max, hasGap) => {
+        const segs = [];
+        if (!hasGap) segs.push([min, max]);
+        else {
+          if (min < -gapHalf) segs.push([min, -gapHalf]);
+          if (max >  gapHalf) segs.push([gapHalf, max]);
+        }
+        for (const [a, b] of segs) {
+          if (b <= a) continue;
+          if (axis === 'x') {
+            blockers.push({ x: (a + b) / 2, z: crossPos, hw: (b - a) / 2, hd: HT / 2 });
+          } else {
+            blockers.push({ x: crossPos, z: (a + b) / 2, hw: HT / 2, hd: (b - a) / 2 });
+          }
+        }
+      };
+      for (const { r, gap } of rings) {
+        addWall('x', -r, -r, r, gap === 'N');
+        addWall('x',  r, -r, r, gap === 'S');
+        addWall('z', -r, -r, r, gap === 'W');
+        addWall('z',  r, -r, r, gap === 'E');
+      }
+      blockers.push({ x: 0, z: 0, hw: 2.8, hd: 2.8 });              // fountain
+    } else if (type === 'amphitheater') {
+      walkables.push({ x: 0, z: 0, hw: 5.0, hd: 5.0, h: 0.65 });    // stage
+
+      // Southern tiered seating, blocked as 22 axis-aligned chunks that
+      // mirror the renderer's 24-sector pattern minus the two aisle
+      // sectors (indices 6 and 17). The aisles themselves stay passable.
+      const stageR = 5.5;
+      const tierStart = stageR + 1.0;              // 6.5
+      const tierDepth = 1.2;
+      const tierCount = 5;
+      const rIn  = tierStart;
+      const rOut = tierStart + tierCount * tierDepth;   // 12.5
+      const segCount = 24;
+      const dA = Math.PI / segCount;
+      const aisleIdx = [6, 17];
+      for (let i = 0; i < segCount; i++) {
+        if (aisleIdx.indexOf(i) >= 0) continue;
+        const a0 = i * dA, a1 = (i + 1) * dA;
+        const pts = [
+          [rIn  * Math.cos(a0), rIn  * Math.sin(a0)],
+          [rOut * Math.cos(a0), rOut * Math.sin(a0)],
+          [rOut * Math.cos(a1), rOut * Math.sin(a1)],
+          [rIn  * Math.cos(a1), rIn  * Math.sin(a1)],
+        ];
+        let minX =  Infinity, maxX = -Infinity;
+        let minZ =  Infinity, maxZ = -Infinity;
+        for (const [x, z] of pts) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (z < minZ) minZ = z;
+          if (z > maxZ) maxZ = z;
+        }
+        blockers.push({
+          x: (minX + maxX) / 2,
+          z: (minZ + maxZ) / 2,
+          hw: (maxX - minX) / 2,
+          hd: (maxZ - minZ) / 2,
+        });
+      }
+    }
+    return { walkables, blockers };
+  }
+
+  // Local-space glow boxes: small emissive parts that sit on top of the
+  // host object (pagoda windows, stone lantern fireboxes, lamp bulbs).
+  // Each returns { x, y, z, w, h, d, color }; color is the host object's
+  // base colour so the part blends during the day and glows amber at night.
+  function collectGlowPoints(type, size) {
+    const R = size / 2;
+    const points = [];
+
+    if (type === 'japanese') {
+      // Pagoda windows: 3 tiers x 4 faces. Window box is 0.10 x 0.60 x 0.55
+      // on each face; the glow box is a touch thicker in the outward axis
+      // (0.14) so it encloses the window's outer face and takes depth.
+      const pgx = R - 6, pgz = -R + 6;
+      const tiers = 3, tierPitch = 2.20, wallH = 1.40, baseY = 0.30;
+      const winT = 0.10, winW = 0.55, winH = 0.60;
+      for (let t = 0; t < tiers; t++) {
+        const s = 4.4 - t * 1.0;
+        const y0 = baseY + t * tierPitch;
+        const wy = y0 + wallH * 0.55;
+        points.push({ x: pgx + s/2 + winT/2, y: wy, z: pgz, w: 0.14, h: winH - 0.05, d: winW - 0.05, color: 0xe8d4a0 });
+        points.push({ x: pgx - s/2 - winT/2, y: wy, z: pgz, w: 0.14, h: winH - 0.05, d: winW - 0.05, color: 0xe8d4a0 });
+        points.push({ x: pgx, y: wy, z: pgz + s/2 + winT/2, w: winW - 0.05, h: winH - 0.05, d: 0.14, color: 0xe8d4a0 });
+        points.push({ x: pgx, y: wy, z: pgz - s/2 - winT/2, w: winW - 0.05, h: winH - 0.05, d: 0.14, color: 0xe8d4a0 });
+      }
+      // Five stone lanterns: fire box is 0.55 x 0.45 x 0.55 at y=1.52.
+      // Glow slightly larger (0.60 x 0.50 x 0.60) so it encloses the box.
+      const lanterns = [
+        [4 + 6.5, -3 + 4], [4 - 6.5, -3 - 4],
+        [R - 5, 4], [-R + 2, 3.5], [-R + 2, -3.5],
+      ];
+      for (const [lx, lz] of lanterns) {
+        points.push({ x: lx, y: 1.52, z: lz, w: 0.60, h: 0.50, d: 0.60, color: 0x9a9aa0 });
+      }
+    } else if (type === 'botanical') {
+      // Four lamp posts at the diagonals of the central plaza. Same bulb
+      // dims as the amphitheater ones below.
+      for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
+        points.push({ x: dx, y: 3.15, z: dz, w: 0.55, h: 0.50, d: 0.55, color: 0xe8c04a });
+      }
+    } else if (type === 'amphitheater') {
+      // Six lamp posts on the northern rim. Bulb is 0.50 x 0.45 x 0.50 at
+      // y = 3.15; glow 0.55 x 0.50 x 0.55.
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI + (i + 0.5) * Math.PI / 6;
+        const x = Math.cos(a) * (R - 1.8);
+        const z = Math.sin(a) * (R - 1.8);
+        points.push({ x, y: 3.15, z, w: 0.55, h: 0.50, d: 0.55, color: 0xe8c04a });
+      }
+    } else if (type === 'market') {
+      // Four mid-edge lamp posts. Same bulb dims as above.
+      const W = size, D = size * 0.85;
+      const hW = W / 2, hD = D / 2;
+      const spots = [[-hW + 1.2, 0], [hW - 1.2, 0], [0, -hD + 1.2], [0, hD - 1.2]];
+      for (const [lx, lz] of spots) {
+        points.push({ x: lx, y: 3.15, z: lz, w: 0.55, h: 0.50, d: 0.55, color: 0xe8c04a });
+      }
+    }
+    return points;
+  }
+
   function add(opts) {
     const { geom, scene, cx, cz } = opts;
     if (!opts.THREE) throw new Error('MeridianParkKit.add: THREE required');
@@ -990,6 +1206,25 @@
       scene.add(mesh);
     }
 
+    // Glow mesh: emissive parts (japanese windows / lanterns, amphitheater
+    // and market lamps). Separate material so day-cycle can modulate its
+    // emissiveIntensity without touching the park's diffuse look.
+    let glowMesh = null;
+    if (scene && opts.glowMaterial) {
+      const pts = collectGlowPoints(type, size);
+      if (pts.length) {
+        const gParts = pts.map(pt =>
+          boxAt(pt.w, pt.h, pt.d, pt.x, pt.y, pt.z, pt.color));
+        const gGeo = geom.mergeGeometries(gParts);
+        glowMesh = new THREE.Mesh(gGeo, opts.glowMaterial);
+        glowMesh.position.set(cx || 0, 0, cz || 0);
+        glowMesh.castShadow = false;
+        glowMesh.receiveShadow = false;
+        glowMesh.userData.parkGlow = true;
+        scene.add(glowMesh);
+      }
+    }
+
     const treesOut = result.trees.map(t => ({
       x: t.x + (cx || 0),
       z: t.z + (cz || 0),
@@ -997,7 +1232,23 @@
       hue: t.hue,
     }));
 
-    return { parts: result.parts, trees: treesOut, mesh, type, level };
+    // Walkables and blockers come back from collectWalkablesAndBlockers()
+    // in local coordinates; translate them to world the same way as trees.
+    const extra = collectWalkablesAndBlockers(type, size);
+    const walkablesOut = extra.walkables.map(w => ({
+      x: w.x + (cx || 0), z: w.z + (cz || 0),
+      hw: w.hw, hd: w.hd, h: w.h,
+    }));
+    const blockersOut = extra.blockers.map(b => ({
+      x: b.x + (cx || 0), z: b.z + (cz || 0),
+      hw: b.hw, hd: b.hd,
+    }));
+
+    return {
+      parts: result.parts, trees: treesOut, mesh, type, level,
+      walkables: walkablesOut, blockers: blockersOut,
+      glowMesh,
+    };
   }
 
   /* ============================================================
@@ -1014,4 +1265,37 @@
   window.MeridianParkKit = {
     add, makeMaterials, pickType, TYPE_IDS, PAL, BUILDERS,
   };
+
+  /* ---------- viewer.html preview ---------- */
+  if (window.MeridianAssets) {
+    MeridianAssets.register({
+      id: 'scenery/park',
+      label: 'Parks — 6 types',
+      group: 'Scenery',
+      notes: 'Botanical garden · amphitheater · japanese garden · hedge maze · playground · market square.',
+      makePreview: function (ctx) {
+        THREE = ctx.THREE;    // module-level; read by boxAt/cylY/... via closure
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({
+          vertexColors: true, roughness: 0.86, metalness: 0.04,
+        });
+        const GAP = 6;
+        let x = 0;
+        const SIZE = 24;
+        for (const id of TYPE_IDS) {
+          const rng = mulberry32(hashSeed(id.length, x * 7, 0xc0ffee));
+          const res = BUILDERS[id](rng, 1, SIZE);
+          const mesh = new THREE.Mesh(ctx.geom.mergeGeometries(res.parts), mat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.position.set(x + SIZE / 2, 0, 0);
+          group.add(mesh);
+          x += SIZE + GAP;
+        }
+        group.position.x = -x / 2;
+        group.userData.parkTypes = TYPE_IDS.slice();
+        return group;
+      },
+    });
+  }
 })();

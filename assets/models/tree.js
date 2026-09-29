@@ -40,7 +40,14 @@
     const Y = new THREE.Vector3(0, 1, 0);
 
     trees.forEach((t, i) => {
-      const sc  = 0.75 + rng() * 0.75;
+      // Always consume one rng() for scale, whatever the branch. The count
+      // per tree stays 1 (scale) + 1 (rotation) + 2 (crown colour) = 4, so
+      // adding park trees with explicit hue / scale does not shift the
+      // seeded stream for the rest of the city.
+      const scVar = rng();
+      const sc = (t.scale != null)
+        ? t.scale * (0.85 + scVar * 0.30)      // ±15 % jitter around the given scale
+        : 0.75 + scVar * 0.75;                 // legacy city tree
       const rot = rng() * Math.PI * 2;
       p.set(t.x, 0, t.z);
       q.setFromAxisAngle(Y, rot);
@@ -48,7 +55,18 @@
       m.compose(p, q, s);
       trunks.setMatrixAt(i, m);
       leaves.setMatrixAt(i, m);
-      col.setHSL(0.28 + rng() * 0.06, 0.45, 0.32 + rng() * 0.12);
+
+      const cVar1 = rng();                     // two rng() calls either way
+      const cVar2 = rng();
+      if (t.hue != null) {
+        // Per-tree hex colour (sakura pink, autumn red, anything). Small
+        // per-instance lightness jitter so a grove of sakura does not read
+        // as one flat slab of pink.
+        col.setHex(t.hue);
+        col.offsetHSL((cVar1 - 0.5) * 0.02, 0, (cVar2 - 0.5) * 0.08);
+      } else {
+        col.setHSL(0.28 + cVar1 * 0.06, 0.45, 0.32 + cVar2 * 0.12);
+      }
       leaves.setColorAt(i, col);
     });
 

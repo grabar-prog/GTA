@@ -322,6 +322,14 @@ const distantCityMat=new THREE.MeshStandardMaterial({
 const parkMat=new THREE.MeshStandardMaterial({
   vertexColors:true, roughness:.86, metalness:.04,
 });
+// Park glow material — japanese pagoda windows and stone lanterns, plus the
+// lamp bulbs of the amphitheater and market. emissiveIntensity is driven by
+// day-cycle; 0 by day, warm amber at night. Vertex colours on the glow mesh
+// carry each part's base colour so it reads as its host object in daylight.
+const parkGlowMat=new THREE.MeshStandardMaterial({
+  vertexColors:true, emissive:0xffc080, emissiveIntensity:0,
+  roughness:0.3, metalness:0.4,
+});
 // Оконный материал — отдельный, потому что vertex colors Three.js
 // работают через diffuse, а нам нужно, чтобы окна горели сильнее стен.
 // Два меша на здание (building.js создаёт оба) дают именно этот эффект.
@@ -357,6 +365,10 @@ const buildings=[],trees=[],cars=[],peds=[];
 // a monument step, a fountain kerb. Each entry is a rectangle in world XZ
 // plus the y its top sits at.
 const walkables=[];
+// Solid structures registered by parks (pagoda, playhouse, stalls, fountain,
+// conservatory). collide() checks them exactly like city buildings. Populated
+// by buildPark; emptied by nothing — parks are built once at boot.
+const parkBlockers=[];
 let streetlights=[],lampMesh=null,lampLightPool=[],lampGroup;
 // curNight хранит текущую ночь (0 — день, 1 — ночь), чтобы пул фар не
 // пересчитывал её отдельно от updateCycle. headlightPool — шесть SpotLight,
@@ -386,29 +398,38 @@ function addBuilding(cx,cz,w,d,h){
   });
 }
 function buildCity(){
+  // Park slots and their fixed types. Six slots, six types — every type
+  // appears at least once per city, deterministically. The previous layout
+  // had five slots and picked the type from a hash of (cx, cz), which was
+  // deterministic too: the same five types on every load, so two of the six
+  // never appeared. The 6th slot (north-east) covers the missing type.
+  //
+  // The slot block loses its buildings and its rng consumption. Reference
+  // numbers in harness.md shift slightly (buildings, tris, trees).
+  const PARK_SLOTS = [
+    [4, 5],   // centre
+    [4, 2],   // north
+    [4, 8],   // south
+    [1, 5],   // west
+    [7, 5],   // east
+    [7, 2],   // north-east
+  ];
+  const PARK_TYPE_BY_SLOT = [
+    'amphitheater',
+    'japanese',
+    'playground',
+    'market',
+    'maze',
+    'botanical',
+  ];
+  const parkByIndex = new Map();
+  PARK_SLOTS.forEach((s, k) => parkByIndex.set(s[0] + ',' + s[1], k));
+
   for(let i=0;i<GRID;i++)for(let j=0;j<GRID;j++){
     const cx=-HALF+i*CELL+CELL/2, cz=-HALF+j*CELL+CELL/2;
-    // Слоты парков в сетке GRID×GRID. Каждый занимает один квартал.
-    // Менять здесь: [i, j], i по X, j по Z. Значения — центр квартала.
-    // Проверять, что слот не пересекается с самим собой и не выходит за GRID.
-    const PARK_SLOTS = [
-      [4, 5],   // центр — plaza/monument
-      [4, 2],   // север
-      [4, 8],   // юг
-      [1, 5],   // запад
-      [7, 5],   // восток
-    ];
-    let isPark = false;
-    for (let k = 0; k < PARK_SLOTS.length; k++) {
-      if (i === PARK_SLOTS[k][0] && j === PARK_SLOTS[k][1]) { isPark = true; break; }
-    }
-    if (isPark) {
-      buildPark(cx, cz);
-      // Если нужно сохранить прежний rng-поток города (см. --keep-rng):
-      // в обычной ячейке ниже тратятся два вызова rng(); в ячейке-парке
-      // их нет. Два пустых вызова выравнивают поток, чтобы дома и трафик
-      // встали как раньше.
-      if (0) { rand(-0.2, 0.2); rng(); }
+    const pIdx = parkByIndex.get(i + ',' + j);
+    if (pIdx !== undefined) {
+      buildPark(cx, cz, PARK_TYPE_BY_SLOT[pIdx]);
       continue;
     }
     const dist=Math.hypot(cx,cz)/HALF;
@@ -440,23 +461,32 @@ function buildDistantCity(){
   });
 }
 
-function buildPark(cx,cz){
+function buildPark(cx,cz,type){
   const res = MeridianParkKit.add({
     THREE, geom, scene,
     cx, cz,
+    type,                       // explicit — pickType() is not consulted
     size: CELL-ROAD-4,
     material: parkMat,
+    glowMaterial: parkGlowMat,
     worldHalf: HALF,
-    // Парк по умолчанию использует ЛОКАЛЬНЫЙ mulberry32: rng-поток города
-    // не сдвигается от смены состава парка. Прежний контракт (52 вызова
-    // основного rng) доступен флагом useMainRng: true.
+    // Парк использует ЛОКАЛЬНЫЙ mulberry32: rng-поток города не сдвигается
+    // от содержимого парка. Прежний контракт (52 вызова основного rng)
+    // доступен флагом useMainRng: true.
   });
-  for (const t of res.trees) addTree(t.x, t.z);
+  for (const t of res.trees) addTree(t);   // pass hue and scale through
   if (res.walkables) for (const w of res.walkables) walkables.push(w);
+  if (res.blockers)  for (const b of res.blockers)  parkBlockers.push(b);
 }
 
 /* ---------- trees (instanced) ---------- */
-function addTree(x,z){trees.push({x,z});}
+// Accepts the tree object the park kits emit: { x, z, scale, hue }. scale and
+// hue are optional; when absent the tree kit falls back to its legacy look
+// (uniform 0.75…1.5 scale, green crown). City-side callers that only push
+// {x,z} keep working.
+function addTree(t){
+  trees.push({ x: t.x, z: t.z, scale: t.scale, hue: t.hue });
+}
 function buildTrees(){
   MeridianTreeKit.build({
     THREE, scene, trees, rng,
@@ -735,7 +765,8 @@ document.addEventListener('mousemove',e=>{if(!locked)return;player.yaw-=e.moveme
 // A footprint blocks you only when you are inside BOTH its x- and z-extent. Testing the two axes
 // separately (||) turned every building into an invisible cross that swallowed whole streets.
 function collide(px,pz,r){
-  for(const b of buildings){if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;}
+  for(const b of buildings)   if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
+  for(const b of parkBlockers)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
   return false;
 }
 
@@ -807,14 +838,20 @@ function groundHeight(x, z) {
   if (xLineInterior && dxRoad <= swOuter && cz > BOX && cz < CELL - BOX) return SIDEWALK_H;
   if (zLineInterior && dzRoad <= swOuter && cx > BOX && cx < CELL - BOX) return SIDEWALK_H;
 
-  // Raised surfaces registered by parks. Take the maximum — if two overlap,
-  // the player stands on the higher one, which is the intuitive choice.
-  let best = 0;
+  // Raised surfaces registered by parks (bridge samples, stage, sandpit).
+  // Nearest-centre-wins: with overlapping rectangles (the bridge emits a
+  // chain of them along its arch) the section closest to the player decides,
+  // not the highest sample — otherwise the peak of the arch would flatten
+  // the whole span to one height.
+  let best = 0, bestD = Infinity;
   for (let i = 0; i < walkables.length; i++) {
     const w = walkables[i];
-    if (Math.abs(x - w.x) < w.hw && Math.abs(z - w.z) < w.hd && w.h > best) best = w.h;
+    const dx = x - w.x, dz = z - w.z;
+    if (Math.abs(dx) >= w.hw || Math.abs(dz) >= w.hd) continue;
+    const d = (dx / w.hw) * (dx / w.hw) + (dz / w.hd) * (dz / w.hd);
+    if (d < bestD) { bestD = d; best = w.h; }
   }
-  return best;   // 0 (grass / off-map) or the highest walkable, if any
+  return best;   // 0 (grass / off-map) or the nearest walkable height
 }
 
 /* ---------- update player + camera ---------- */
@@ -1035,7 +1072,7 @@ async function boot(){
     DAY_LEN,
     world:{GRID,CELL,ROAD},
     lights:{sun,moon,hemi},
-    mats:{glassMat,buildingGlassMat,solidMat,headMat,tailMat,busGlassMat},
+    mats:{glassMat,buildingGlassMat,solidMat,headMat,tailMat,busGlassMat,parkGlowMat},
     pools:{lampLightPool},
     getPlayerPos:()=>player,
     startTime:8/24,
