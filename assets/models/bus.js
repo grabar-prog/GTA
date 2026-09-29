@@ -83,9 +83,12 @@
     P.push(boxAt(W - 1.15, .34, .1, 0, y1 - .42, fz + .05, PAL.busDisplay));
     P.push(boxAt(W + .02, .36, .3, 0, .56, fz - .05, PAL.trim));
     P.push(boxAt(W + .02, .36, .3, 0, .56, rz + .05, PAL.trim));
-    // Rear window moved into the glass mesh and repainted PAL.glass so it
-    // joins the night glow; PAL.dark here would read as an unlit panel.
-    G_.push(boxAt(W - .7, .95, .1, 0, 1.45, rz - .03, PAL.glass));
+    // Rear window stays in the body accumulator (P) — dark panel, no glow.
+    // It used to sit in the glass mesh, which put it on the same emissive
+    // material as the side band and the doors; with three chrome ribs on
+    // top it read as a glowing luggage rack at night. The chrome ribs are
+    // decorative, not lit, and stay where they were.
+    P.push(boxAt(W - .7, .95, .1, 0, 1.45, rz - .03, PAL.glass));
     for (let i = 0; i < 3; i++) P.push(boxAt(W - 1.0, .06, .06, 0, 1.15 + i * .22, rz - .07, PAL.chrome));
     return { body: mergeGeometries(P), glass: mergeGeometries(G_) };
   }

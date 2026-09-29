@@ -52,6 +52,11 @@
     const HALF  = opts.HALF  != null ? opts.HALF  : 290;
     const CAR_COUNT_BASE = opts.CAR_COUNT_BASE != null ? opts.CAR_COUNT_BASE : 52;
     const CAR_COUNT_MAX  = opts.CAR_COUNT_MAX  != null ? opts.CAR_COUNT_MAX  : 130;
+    // Lane offset signs, derived from the same traffic side that buildCars()
+    // uses (game/gta.html TRAFFIC_SIDE). Must agree with buildCars or the
+    // whole lane model drifts. Right-hand: axis 0 = -dir, axis 1 = +dir.
+    const laneSign0 = opts.trafficSide === 'left' ?  1 : -1;
+    const laneSign1 = opts.trafficSide === 'left' ? -1 :  1;
 
     // -------- константы --------
     const BOX          = ROAD / 2;
@@ -111,8 +116,9 @@
 
     /* ---- intersection helpers (полный комментарий был в gta.html) ---- */
     const lineCoord = k => -HALF + k * CELL;
-    // Must match the lane offset chosen in buildCars(). Right-hand traffic.
-    const laneCoord = v => lineCoord(v.lineIdx) + (v.axis === 0 ? -v.dir : v.dir) * ROAD / 4;
+    // Must match the lane offset chosen in buildCars(). Signs come from
+    // trafficSide so a single TRAFFIC_SIDE constant drives both sides.
+    const laneCoord = v => lineCoord(v.lineIdx) + (v.axis === 0 ? laneSign0 : laneSign1) * v.dir * ROAD / 4;
     const halfX = v => v.axis === 0 ? v.hw : v.hl;
     const halfZ = v => v.axis === 0 ? v.hl : v.hw;
     // Yield to the vehicle geometrically on your right. This is a priority

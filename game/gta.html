@@ -223,6 +223,12 @@ const { mergeGeometries, boxAt, taperBox, cylX, cylY, cylZ,
 
 /* ---------- constants ---------- */
 const GRID=10, CELL=58, ROAD=16, SIDEWALK=3.5;
+// Traffic side. 'right' or 'left'. Drives three signs that must stay
+// consistent — lane offset in buildCars(), lane offset in laneCoord()
+// (traffic-ai.js), and bus door side (vehicles.js). Everything else reads
+// the value through options. fromRight() is geometric and does not flip
+// with this; see C-LANE-7.
+const TRAFFIC_SIDE = 'right';
 // ---- Minimap ----
 // MINIMAP_SIZE_BASE — желаемый размер канваса в CSS-пикселях; в initMinimap()
 // он ужимается до 30% меньшей стороны окна, если экран маленький.
@@ -527,7 +533,7 @@ function buildStreetlights(){
 // Determinism: pickVehicleType(rng), the paint/tint picks below and the bus-door coin inside
 // makeVehicleGeometry(t, paint, tint, rng) all keep their original rng() positions — contracts/
 // README.md §4.
-const V = MeridianVehicles.createFactory({ THREE, helpers: geom });
+const V = MeridianVehicles.createFactory({ THREE, helpers: geom, trafficSide: TRAFFIC_SIDE });
 const { CAR_TYPES, BUS_TYPES, TRUCK_TYPES, VEH_TYPES, VEH_W, DRIVE } = MeridianVehicles;
 const carBodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.34,metalness:.55});
 const wheelMat  =new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,metalness:.18});
@@ -617,14 +623,16 @@ function buildCars(){
     const paint=PAL.car[(rng()*PAL.car.length)|0];
     const tint=t.kind==='bus'?PAL.stripe[(rng()*PAL.stripe.length)|0]
              :t.kind==='semi'?PAL.curtain[(rng()*PAL.curtain.length)|0]:paint;
-    // Right-hand traffic: the car drives on the right side of the centreline.
-    // In a Y-up right-handed frame, a car facing +Z has its right at -X, and
-    // a car facing +X has its right at +Z. Signs flipped from the previous
-    // left-hand version.
-    const off=v.dir*ROAD/4; // lane offset from centerline
+    // Lane offset sign derived from TRAFFIC_SIDE. In a Y-up right-handed
+    // frame, a car facing +Z has its right at -X, and a car facing +X has
+    // its right at +Z — so 'right' traffic is (axis 0: -off, axis 1: +off)
+    // and 'left' is the mirror.
+    const off=v.dir*ROAD/4; // |lane offset| from centreline
+    const sgn0 = TRAFFIC_SIDE === 'left' ?  1 : -1;
+    const sgn1 = TRAFFIC_SIDE === 'left' ? -1 :  1;
     let x,z,vx=0,vz=0;
-    if(v.axis===0){x=-HALF+v.lineIdx*CELL-off;z=v.along;vz=v.dir;}
-    else{z=-HALF+v.lineIdx*CELL+off;x=v.along;vx=v.dir;}
+    if(v.axis===0){x=-HALF+v.lineIdx*CELL+sgn0*off;z=v.along;vz=v.dir;}
+    else{z=-HALF+v.lineIdx*CELL+sgn1*off;x=v.along;vx=v.dir;}
     // Forward is local +Z, so yaw must come from the travel vector. The old table (yaw=PI for dir>0
     // on the z-axis) pointed every car against its motion — invisible with two boxes, obvious now.
     const yaw=Math.atan2(vx,vz);
@@ -1093,6 +1101,7 @@ async function boot(){
     cars,peds,player,lanes,
     CAR_COUNT_BASE,CAR_COUNT_MAX,
     CELL,ROAD,HALF,
+    trafficSide: TRAFFIC_SIDE,
     headlightPool,
     getNight:()=>curNight,
     initialMult:pendingTrafficMult,

@@ -78,6 +78,10 @@
   function createFactory(opts) {
     const THREE = opts.THREE;
     if (!THREE) throw new Error('MeridianVehicles.createFactory: THREE is required');
+    // 'right' or 'left'; determines which side of the bus the doors open on.
+    // With forward = +Z and up = +Y, the bus's right side is -X, so
+    // right-hand traffic → doorSide = -1, left-hand → +1.
+    const doorSide = opts.trafficSide === 'left' ? 1 : -1;
     const G = opts.helpers || {};
     for (const need of ['mergeGeometries', 'boxAt', 'taperBox', 'cylX', 'cylZ']) {
       if (typeof G[need] !== 'function') {
@@ -108,7 +112,13 @@
     // Монетка двери живёт здесь — её позиция в rng-потоке контрактна.
     function makeVehicleGeometry(t, paint, tint, rng) {
       if (t.kind === 'bus') {
-        const r = makeBusGeometry(t, paint, tint, rng() < .5 ? 1 : -1);
+        // Door side derived from TRAFFIC_SIDE by createFactory — the curb
+        // side is the bus's own right under right-hand traffic and the
+        // bus's own left under left-hand traffic. One rng() draw is still
+        // consumed here so the seeded generation order is unchanged; the
+        // value itself is discarded.
+        rng();
+        const r = makeBusGeometry(t, paint, tint, doorSide);
         return { body: r.body, glass: r.glass };
       }
       if (t.kind === 'semi') return { body: makeSemiGeometry(t, paint, tint) };
