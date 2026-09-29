@@ -383,8 +383,19 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
   ];
 
   console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, errs }, null, 2));
+  // ANSI colors: 32 = green, 31 = red, 1 = bold, 0 = reset.
+  // Respect NO_COLOR (https://no-color.org/) and only colorize when stdout is a TTY,
+  // so redirected/piped output stays clean for CI logs.
+  const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+  const paint = (code, s) => useColor ? `\x1b[1;${code}m${s}\x1b[0m` : s;
+  const GREEN = s => paint(32, s);
+  const RED   = s => paint(31, s);
+
   let ok = true;
-  for (const [label, pass] of checks) { if (!pass) ok = false; console.log((pass ? 'PASS  ' : 'FAIL  ') + label); }
+  for (const [label, pass] of checks) {
+    if (!pass) ok = false;
+    console.log((pass ? GREEN('PASS') : RED('FAIL')) + '  ' + label);
+  }
   console.log('screenshots -> ' + OUT);
   await browser.close();
   process.exit(ok ? 0 : 1);
