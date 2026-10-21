@@ -366,6 +366,9 @@ const busGlassMat=new THREE.MeshStandardMaterial({vertexColors:true,emissive:0xf
 
 /* ---------- city data ---------- */
 const buildings=[],trees=[],cars=[],peds=[];
+// Collision shell for buildings. The player collides against these thin wall
+// rects; `buildings` above is the solid outer AABB kept for the minimap.
+const buildingWalls=[];
 // Raised surfaces the player can stand on, other than the sidewalks (which
 // are computed directly by groundHeight). Populated by parks: a sandpit top,
 // a monument step, a fountain kerb. Each entry is a rectangle in world XZ
@@ -395,12 +398,15 @@ function buildGround(){
 }
 
 /* ---------- buildings ---------- */
-function addBuilding(cx,cz,w,d,h){
+function addBuilding(cx,cz,w,d,h,facing){
   MeridianBuildingKit.add({
     THREE, geom, scene,
     materials: { solid: solidMat, glass: buildingGlassMat, glassDark: buildingGlassDarkMat },
     cx, cz, w, d, h, rng, buildings,
     worldHalf: HALF,
+    facing,
+    colliders: buildingWalls,
+    walkables,
   });
 }
 function buildCity(){
@@ -445,11 +451,13 @@ function buildCity(){
     // 2x2 building cluster per block
     const gap=1.6, half=(CELL-ROAD)/2 - SIDEWALK*0.9;
     for(let a=0;a<2;a++)for(let b=0;b<2;b++){
-      if(rng()<0.14)continue; // occasional lot / plaza
+      if(rng()<0.14)continue;
       const bw=(half-gap/2)*rand(.7,1), bd=(half-gap/2)*rand(.7,1);
       const ox=cx+(a-0.5)*(bw+gap)+ (rng()-.5)*1.5;
       const oz=cz+(b-0.5)*(bd+gap)+ (rng()-.5)*1.5;
-      addBuilding(ox,oz,bw,bd,h*rand(.72,1.1));
+      // фасад — наружу от центра квартала по X-оси: a=0 → запад, a=1 → восток
+      const facing = (a === 0) ? 'W' : 'E';
+      addBuilding(ox,oz,bw,bd,h*rand(.72,1.1),facing);
     }
   }
 }
@@ -773,7 +781,7 @@ document.addEventListener('mousemove',e=>{if(!locked)return;player.yaw-=e.moveme
 // A footprint blocks you only when you are inside BOTH its x- and z-extent. Testing the two axes
 // separately (||) turned every building into an invisible cross that swallowed whole streets.
 function collide(px,pz,r){
-  for(const b of buildings)   if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
+  for(const b of buildingWalls)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
   for(const b of parkBlockers)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
   return false;
 }
@@ -1177,7 +1185,7 @@ const MERIDIAN = {
   // World constants the assertions compare against
   GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Data — the harness mutates through the same references
-  cars, buildings, trees, walkables, lampLightPool, headlightPool, player,
+  cars, buildings, buildingWalls, trees, walkables, lampLightPool, headlightPool, player,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
   // Frame drivers — the sim block steps the game without the rAF loop

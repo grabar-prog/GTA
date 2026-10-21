@@ -26,10 +26,10 @@
 
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
-- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈24 s under SwiftShader (generation alone 5.70 s).
+- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈37 s under SwiftShader (generation alone 8.70 s).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
-- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (23 checks) are different programs with different measurement points. Always state which version a number came from.
+- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (24 checks) are different programs with different measurement points. Always state which version a number came from.
 - **Thresholds are contracts:** amend them with a reason ([README.md](README.md)), never silently relax; the seeded RNG is contractual, so reference numbers move whenever generation order changes.
 - **Console noise that is normal:** 4× Edge *"Tracking Prevention blocked access to storage for …unpkg.com/three@0.160…"*; FPS ≈8 under SwiftShader at 1280×760 with shadows (player speed stays correct because `dt` is clamped to 0.05 s).
 
@@ -101,23 +101,23 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (verified@HEAD-2026-09-29)
+### Reference run (verified@HEAD-2026-10-21)
 
-This is the **current** harness (`harness/check-city.js`, 23 checks). The working tree at `cf4c702` carried one comment-only delta in `setTrafficMult`; behaviour is unchanged from HEAD, so these numbers describe `cf4c702` itself.
+This is the **current** harness (`harness/check-city.js`, 24 checks). These numbers describe the tree with the building-interior fixes in `assets/models/building.js` (viewer previews, office base course + lift backing slab, tower lobby lining removal) and the per-building collision shells / facade facing in `game/gta.html`.
 
 ```
-verified@HEAD 2026-09-29 (24/24 PASS, exit 0, wall ≈ 24 s under SwiftShader)
+verified@HEAD 2026-10-21 (24/24 PASS, exit 0, wall ≈ 37 s under SwiftShader)
 
-genMs 5630   calls 161   tris 570832   geoms 1169
-meshesInScene 1213   buildings 321   trees 29   errs []
-fleet {semi:27, bus:23, van:11, hatch:15, artbus:9, suv:13, pickup:17, sedan:15} = 130 (whole park)
-kinds {semi:27, bus:32, car:71} = 130   artic 9   longest 17.5
+genMs 8700   calls 170   tris 668644   geoms 981
+meshesInScene 1222   buildings 318   trees 37   errs []
+fleet {pickup:18, sedan:16, bus:22, semi:26, hatch:17, artbus:9, suv:12, van:10} = 130 (whole park)
+kinds {car:73, bus:31, semi:26} = 130   artic 9   longest 17.5
 spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetErr 0
-maxCrossAbs 236 · wheelsWanted/Count 646/646 · unwrittenWheels 0 · unwrittenLenses 0
-maxNoseAbs 279.51 · maxSideAbs 237.38 · APRON 60
+maxCrossAbs 236 · wheelsWanted/Count 642/642 · unwrittenWheels 0 · unwrittenLenses 0
+maxNoseAbs 279.65 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 691 · offRoadSamples 0 · stuckFraction 0.022 · perpFrames 0 · sameFrames 68852
-       maxPen 2.75 (semi#4 vs artbus#69, t=0.7) · yieldSeconds 6557 · heldNoseMax 0
+       wraps 766 · offRoadSamples 0 · stuckFraction 0.0159 · perpFrames 0 · sameFrames 64732
+       maxPen 2.75 (bus#13 vs semi#105, t=0) · yieldSeconds 5101 · heldNoseMax 0
        gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps

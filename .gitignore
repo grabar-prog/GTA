@@ -68,3 +68,4 @@ tools/lint-refs.sh.bak.*
 *.run_scripts_logs/
 patches
 ides
+list.txt
