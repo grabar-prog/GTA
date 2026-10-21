@@ -5,10 +5,11 @@
 ## Rules — read always
 
 - **C-CAM-1** Vertical look uses `+e.movementY` (larger pitch = looking further down); `player.yaw` keeps the usual `-=`.
-- **C-CAM-2** The rig never goes under the asphalt: `ty = Math.max(0.35, 1.9 + dist*Math.sin(player.pitch))`. Orbit distance 7.4 m sprinting / 6.2 m walking.
+- **C-CAM-2** The rig never goes under the asphalt: `ty = Math.max(0.35, 1.9 + dist*Math.sin(player.pitch))`. Orbit distance is nominally 7.4 m sprinting / 6.2 m walking — C-CAM-6 may pull it in when a wall sits between camera and player.
 - **C-CAM-3** Pitch clamp stays `[-1.35, 1.35]`; harness sweeps −1.35…+1.2 and asserts every camera height lands in `[0.3, 9]` (reference run 0.35 … 7.68).
 - **C-CAM-4** Player↔building collision is exact AABB per building from that building's own footprint (`b.hw`, `b.hd`) — never a square block, never an `||` shortcut.
 - **C-CAM-5** Click captures the mouse, Esc releases, click re-captures; `requestPointerLock()` needs `.catch(()=>{})`; the traffic slider must not steal the lock (see [boot-sequence.md](boot-sequence.md) C-BOOT-5).
+- **C-CAM-6** No collider rect (`buildingWalls` + `parkBlockers`) may sit between camera and player: the orbit distance is pulled in until the whole player→camera segment clears every rect, stopping 0.3 m short of any face (`CAM_WALL_MARGIN`) and never closer than 1.5 m to the player (`CAM_MIN_DIST`). Pure XZ test on the same rects as `collide()`.
 
 Verify: harness check 3 + the `cam` block (`{ pitch_-1.35: y, … }`). Manual feel test — look straight up while sprinting, then walk into a building doorway: no clipping through walls, no invisible barriers across a street.
 
@@ -45,3 +46,9 @@ Wrapping either term in `||` around each building grows an invisible cross that 
 ### C-CAM-5 — Mouse capture lifecycle
 
 The old one-liner attached while `renderer` was still `undefined`, so the view stayed stuck after a single Escape; see [boot-sequence.md](boot-sequence.md) C-BOOT-4 for the listener and C-BOOT-5 for why the HUD slider stops propagating its click.
+
+### C-CAM-6 — No wall between camera and player
+
+Inside a lobby facing a wall, the full orbit lands on the far side of that wall: the view reads as "the game sees through buildings". The fix pulls the orbit in along its own direction until the segment is clear. A line meets each axis-aligned rect in one interval, so `camClearT()` takes the earliest entry over all rects; the camera stops 0.3 m short of the nearest face and never closer than 1.5 m to the player (tight lobbies would otherwise dive into the hero).
+
+Measured on the tree before this rule (lobby at (−154.3, −21.1), yaw 112.5°): the full orbit point sat inside two wall rects and the player→camera segment crossed both; after pull-in the camera is outside every rect with zero crossings. The test is pure XZ on the same rects as `collide()` — treating every rect as a full-height column is deliberately conservative, and it costs ~1300 cheap bbox pre-filters per frame.

@@ -252,6 +252,8 @@ const GROUND_APRON=60;
 const DAY_LEN=170;                 // seconds per full day cycle
 const WALK=4.6, SPRINT=9.6;
 const PLAYER_R=0.5;                  // collision radius of the walker
+const CAM_WALL_MARGIN=0.3;   // camera stops this far short of any wall face — see C-CAM-6
+const CAM_MIN_DIST=1.5;      // orbit never pulls in closer than this, even against a wall
 const _X=new THREE.Vector3(1,0,0),_Y=new THREE.Vector3(0,1,0),_ONE=new THREE.Vector3(1,1,1);
 const _m4a=new THREE.Matrix4(),_m4b=new THREE.Matrix4(),_m4c=new THREE.Matrix4();
 const _qy=new THREE.Quaternion(),_qx=new THREE.Quaternion(),_qv=new THREE.Vector3(),_sv=new THREE.Vector3(1,1,1);
@@ -785,6 +787,35 @@ function collide(px,pz,r){
   for(const b of parkBlockers)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
   return false;
 }
+// Slab test: the t-interval where P + t*O lands inside the axis-aligned rect centred at (cx,cz).
+function _rectT(px,pz,ox,oz,cx,cz,hw,hd){
+  let te=0,tx=1;
+  if(Math.abs(ox)<1e-6){if(Math.abs(px-cx)>=hw)return null;}
+  else{const a=(cx-hw-px)/ox,b=(cx+hw-px)/ox;te=Math.max(te,a<b?a:b);tx=Math.min(tx,a<b?b:a);if(te>tx)return null;}
+  if(Math.abs(oz)<1e-6){if(Math.abs(pz-cz)>=hd)return null;}
+  else{const a=(cz-hd-pz)/oz,b=(cz+hd-pz)/oz;te=Math.max(te,a<b?a:b);tx=Math.min(tx,a<b?b:a);if(te>tx)return null;}
+  return [te,tx];
+}
+// Largest t in [0,1] keeping the orbit segment P→P+t*O out of every wall rect — see C-CAM-6.
+// A line meets each rect in one interval, so the earliest entry over all rects bounds t; when the
+// player already stands inside the margin band (only possible after a car shove), the real face
+// bounds it instead of the margin.
+function camClearT(px,pz,ox,oz){
+  let t=1;
+  for(const b of buildingWalls)t=Math.min(t,camBoxT(b,px,pz,ox,oz));
+  for(const b of parkBlockers)t=Math.min(t,camBoxT(b,px,pz,ox,oz));
+  return t;
+}
+function camBoxT(b,px,pz,ox,oz){
+  const m=CAM_WALL_MARGIN;
+  if(Math.abs(px+ox*0.5-b.x)>b.hw+m+Math.abs(ox)*0.5)return 1;   // segment span misses the rect
+  if(Math.abs(pz+oz*0.5-b.z)>b.hd+m+Math.abs(oz)*0.5)return 1;
+  const iv=_rectT(px,pz,ox,oz,b.x,b.z,b.hw+m,b.hd+m);
+  if(!iv||iv[0]>=1)return 1;
+  if(iv[0]>0)return iv[0];
+  const r=_rectT(px,pz,ox,oz,b.x,b.z,b.hw,b.hd);
+  return r?r[0]:1;
+}
 
 /* ---------- moving obstacles: car OBBs and the crowd ---------- */
 // Push (px,pz) out of every car footprint. Cars are oriented boxes, so the test runs in the car's own
@@ -918,9 +949,13 @@ function updatePlayer(dt,t){
   // Camera ride height is measured from the walkable surface, not world zero:
   // the 0.35 floor clamp still keeps the rig above the asphalt when looking
   // up, and player.y shifts the whole rig up when the player is on a sidewalk.
-  const tx=player.x+Math.sin(player.yaw)*dist*cp,
-        ty=player.y+Math.max(0.35,1.9+dist*sp),
-        tz=player.z+Math.cos(player.yaw)*dist*cp;
+  // A wall between camera and player reads as "the game sees through buildings": pull the orbit in
+  // until the whole segment is clear — see methodology/contracts/camera.md#C-CAM-6.
+  const ox=Math.sin(player.yaw)*dist*cp, oz=Math.cos(player.yaw)*dist*cp;
+  const d2=Math.max(CAM_MIN_DIST,dist*camClearT(player.x,player.z,ox,oz));
+  const tx=player.x+Math.sin(player.yaw)*d2*cp,
+        ty=player.y+Math.max(0.35,1.9+d2*sp),
+        tz=player.z+Math.cos(player.yaw)*d2*cp;
   camera.position.lerp(new THREE.Vector3(tx,ty,tz),1-Math.pow(0.0015,dt));
   camera.lookAt(player.x,player.y+1.4,player.z);
 

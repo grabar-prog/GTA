@@ -63,7 +63,7 @@ routing table's *Contents* column describes what a file holds permanently — ne
 
 | Task / keywords | Open | Contents (anchors citable from code comments) |
 |---|---|---|
-| camera, mouse look, view, pitch, camera under the asphalt, player collision | [methodology/contracts/camera.md](<methodology/contracts/camera.md>) | C-CAM-1…5 — `+e.movementY`, `ty = Math.max(0.35, …)`, ±1.35, exact AABB |
+| camera, mouse look, view, pitch, camera under the asphalt, player collision | [methodology/contracts/camera.md](<methodology/contracts/camera.md>) | C-CAM-1…6 — `+e.movementY`, `ty = Math.max(0.35, …)`, ±1.35, exact AABB |
 | loading, loader, boot order, generation errors (TDZ), Esc/re-lock, slider steals the cursor | [methodology/contracts/boot-sequence.md](<methodology/contracts/boot-sequence.md>) | C-BOOT-1…5 — `boot()` step order, loader hides itself at 100 % |
 | traffic, cars, spawn, lanes, traffic multiplier | [methodology/contracts/traffic-lanes.md](<methodology/contracts/traffic-lanes.md>) | C-LANE-1…6 — `ROAD/4`, interior-line-only (cars **and** pedestrians), wrap, active fleet size |
 | crossings, right of way, pedestrian stuck, give-way priority | [methodology/contracts/right-of-way.md](<methodology/contracts/right-of-way.md>) | C-ROW-1…6 — positional priority, `bodyGap()` counts bodies ahead only, one shared `xs.list`, `clearance(P)` |
