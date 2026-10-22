@@ -69,6 +69,8 @@
     const REVERSE_V    = 2.6;
     const REV_MAX      = 14;
     const CAR_LIMIT    = HALF;
+    // Wrap period of wrapGap()/gapAhead(): must stay exactly CAR_LIMIT*2 or lane distances lie —
+    // see methodology/contracts/traffic-lanes.md#C-LANE-3
     const TRACK        = CAR_LIMIT * 2;
     const HEADLIGHT_POOL_SIZE   = 12;   // 6 машин × 2 фары
     const HEADLIGHT_NEAR_PLAYER = 18;
@@ -118,6 +120,7 @@
     const lineCoord = k => -HALF + k * CELL;
     // Must match the lane offset chosen in buildCars(). Signs come from
     // trafficSide so a single TRAFFIC_SIDE constant drives both sides.
+    // see methodology/contracts/traffic-lanes.md#C-LANE-7
     const laneCoord = v => lineCoord(v.lineIdx) + (v.axis === 0 ? laneSign0 : laneSign1) * v.dir * ROAD / 4;
     const halfX = v => v.axis === 0 ? v.hw : v.hl;
     const halfZ = v => v.axis === 0 ? v.hl : v.hw;
@@ -206,10 +209,12 @@
       }
       return {
         key: (c.axis === 0 ? c.lineIdx + ':' + xIdx : xIdx + ':' + c.lineIdx),
-        xIdx, dc, stop: dc - c.hl - BOX,
+        xIdx, dc, stop: dc - c.hl - BOX,   // held car stops before the box face — see methodology/contracts/right-of-way.md#C-ROW-6
       };
     }
 
+    // Both legs are measured to one point P — the intersection of the two lane axes — not "how far
+    // the opponent still has to go" along its own line. see methodology/contracts/right-of-way.md#C-ROW-4
     function clearance(c, o) {
       if (o.axis === c.axis) return -Infinity;   // same-axis: no conflict, no hold (C-ROW-4)
       const dC = (laneCoord(o) - c.s) * c.dir;
@@ -220,6 +225,7 @@
       return tClear - Math.max(dO - o.hl, 0) / Math.max(o.cruise, 0.5);
     }
 
+    // Refuse to enter a box this car cannot clear — see methodology/contracts/right-of-way.md#C-ROW-7
     function roomToClear(c) {
       const xs = c.xs;
       if (!xs) return true;
@@ -299,6 +305,7 @@
         if (c.reverse) continue;
         const xs = crossState(c);
         if (!xs) continue;
+        // One shared list per crossing hand, referenced by every vehicle in it — see methodology/contracts/right-of-way.md#C-ROW-3
         let list = crossings.get(xs.key);
         if (!list) { list = []; crossings.set(xs.key, list); }
         c.xs = xs; xs.list = list; list.push(c);
@@ -306,6 +313,7 @@
       for (const list of crossings.values()) {
         if (list.length < 2) continue;
         for (const c of list) c._inBox = Math.abs(c.xs.dc) < BOX + c.hl;
+        // Priority is positional only — in-box first, then time-to-line, right of way, id; never speed-dependent — see methodology/contracts/right-of-way.md#C-ROW-1
         list.sort((a, b) => {
           const ai = a._inBox ? 0 : 1, bi = b._inBox ? 0 : 1;
           if (ai !== bi) return ai - bi;
@@ -371,6 +379,7 @@
         c.lead = leaderAhead(c);
         if (c.speed < 0.5) c.stall += dt; else c.stall = 0;
       }
+      // All three liveliness guards run every frame — see methodology/contracts/right-of-way.md#C-ROW-5
       arbitrateCrossings();
       unstickCars(dt);
       for (const c of cars) {
@@ -380,6 +389,7 @@
         const lead = c.lead;
         if (lead) target = Math.min(target, approachLimit(c, lead.d, c.dmin));
         c.yielding = !!c.xs && !c.xGo;
+        // A denied car brakes to its stop line before the box — see methodology/contracts/right-of-way.md#C-ROW-6
         if (c.yielding) target = Math.min(target, approachLimit(c, Math.max(c.xs.stop, 0), CROSS_DMIN));
         // Perpendicular cars are arbitration's concern, not bodyGap's.
         // When xGo = true we have already been given the right of way —
@@ -399,8 +409,12 @@
         const a = target > c.speed ? c.acc : c.dec;
         c.braking = target < c.speed - 0.35;
         c.speed += Math.max(-a * dt, Math.min(a * dt, target - c.speed));
+        // Cars only ever move along their own lane axis — the cross coordinate is fixed at spawn,
+        // so containment in ±HALF holds for the whole run. see methodology/contracts/traffic-lanes.md#C-LANE-5
         if (c.axis === 0) c.z += c.dir * c.speed * dt;
         else c.x += c.dir * c.speed * dt;
+        // Wrap at CAR_LIMIT, never beyond — see methodology/contracts/traffic-lanes.md#C-LANE-4,
+        // methodology/contracts/world-constants.md#C-WLD-4
         if (Math.abs(c.z) > CAR_LIMIT) c.z = -Math.sign(c.z) * CAR_LIMIT;
         if (Math.abs(c.x) > CAR_LIMIT) c.x = -Math.sign(c.x) * CAR_LIMIT;
         c.s = c.axis === 0 ? c.z : c.x;

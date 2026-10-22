@@ -585,6 +585,7 @@ function buildCars(){
     // border of the ground plane, so traffic put there drove *along* the edge of the world with its outer
     // lane hanging over the void. Through traffic is still fine — it just uses roads that end at the map
     // border instead of one that runs parallel to it.
+    // see methodology/contracts/traffic-lanes.md#C-LANE-2, methodology/contracts/world-constants.md#C-WLD-1
     const lineIdx=1+Math.floor(rng()*(GRID-1));
     const key=axis+':'+lineIdx+':'+dir,taken=slot.get(key)||slot.set(key,[]).get(key);
     let along=rand(-HALF,HALF),tries=0;
@@ -644,6 +645,8 @@ function buildCars(){
     // frame, a car facing +Z has its right at -X, and a car facing +X has
     // its right at +Z — so 'right' traffic is (axis 0: -off, axis 1: +off)
     // and 'left' is the mirror.
+    // Offset is exactly ROAD/4 and must agree with laneCoord() in traffic-ai.js —
+    // see methodology/contracts/traffic-lanes.md#C-LANE-1, methodology/contracts/traffic-lanes.md#C-LANE-7
     const off=v.dir*ROAD/4; // |lane offset| from centreline
     const sgn0 = TRAFFIC_SIDE === 'left' ?  1 : -1;
     const sgn1 = TRAFFIC_SIDE === 'left' ? -1 :  1;
@@ -710,6 +713,7 @@ function buildPeds(){
   for(let i=0;i<N;i++){
     // Interior road lines only (1…GRID-1): line 0 and line GRID lie exactly on the border of the ground
     // plane, so a walker put there started out standing in the void outside the map.
+    // see methodology/contracts/world-constants.md#C-WLD-2
     const axis=rng()<.5?0:1;const lineIdx=1+Math.floor(rng()*(GRID-1));const along=rand(-PED_LIMIT,PED_LIMIT);
     const side=(rng()<.5?1:-1)*(ROAD/2+1.8);   // pavement strip between carriageway and building line
     const dir=rng()<.5?1:-1;                   // ±1 along the lane, reversed at the map border
@@ -770,12 +774,14 @@ let pendingTrafficMult=1;
 // Значение уточняется колбэком onMultChanged при инициализации.
 let activeCars=CAR_COUNT_BASE;
 const tmulEl=document.getElementById('tmul'),tsliderEl=document.getElementById('tslider');
+// The multiplier scales the ACTIVE FLEET SIZE, not time — see methodology/contracts/traffic-lanes.md#C-LANE-6
 function setTrafficMult(m){
   pendingTrafficMult=m;
   if(trafficAI) trafficAI.setTrafficMult(m);
 }
 if(tsliderEl){
   tsliderEl.addEventListener('input',()=>setTrafficMult(+tsliderEl.value/100));
+  // The slider must never pull the cursor back into pointer lock — see methodology/contracts/boot-sequence.md#C-BOOT-5
   ['pointerdown','mousedown','click','dblclick'].forEach(ev=>tsliderEl.addEventListener(ev,e=>e.stopPropagation()));
 }
 function adjustTrafficMult(delta){
@@ -784,11 +790,13 @@ function adjustTrafficMult(delta){
 }
 // Pitch raises the camera *behind and above* the player (the rig looks at the character), so a
 // larger pitch means looking further DOWN — hence +movementY, otherwise vertical look is inverted.
+// see methodology/contracts/camera.md#C-CAM-1 (sign), methodology/contracts/camera.md#C-CAM-3 (clamp)
 document.addEventListener('mousemove',e=>{if(!locked)return;player.yaw-=e.movementX*0.0024;player.pitch=clamp(player.pitch+e.movementY*0.0024,-1.35,1.35);});
 
 /* ---------- collision ---------- */
 // A footprint blocks you only when you are inside BOTH its x- and z-extent. Testing the two axes
 // separately (||) turned every building into an invisible cross that swallowed whole streets.
+// see methodology/contracts/camera.md#C-CAM-4
 function collide(px,pz,r){
   for(const b of buildingWalls)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
   for(const b of parkBlockers)if(Math.abs(px-b.x)-b.hw<r&&Math.abs(pz-b.z)-b.hd<r)return true;
@@ -976,6 +984,7 @@ function updatePlayer(dt,t){
   // Camera ride height is measured from the walkable surface, not world zero:
   // the 0.35 floor clamp still keeps the rig above the asphalt when looking
   // up, and player.y shifts the whole rig up when the player is on a sidewalk.
+  // see methodology/contracts/camera.md#C-CAM-2
   // A wall between camera and player reads as "the game sees through buildings": pull the orbit in
   // until the whole segment is clear — see methodology/contracts/camera.md#C-CAM-6.
   const ox=Math.sin(player.yaw)*dist*cp, oz=Math.cos(player.yaw)*dist*cp;
@@ -1050,6 +1059,7 @@ function updatePeds(dt,t){
     }
     // Border reached → about-turn, and clamp hard so a shove from the player can never launch a walker
     // past the edge of the world either.
+    // see methodology/contracts/world-constants.md#C-WLD-3
     const out=p.axis===0?p.z:p.x;
     if(Math.abs(out)>PED_LIMIT){
       p.dir*=-1;
@@ -1139,6 +1149,7 @@ function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-last
 
 /* ---------- boot with staged loader ---------- */
 function nextFrame(){return new Promise(r=>requestAnimationFrame(()=>r()));}
+// Step order is contractual — see methodology/contracts/boot-sequence.md#C-BOOT-1
 async function boot(){
   const bar=document.getElementById('lbar'),txt=document.getElementById('ltxt');
   const step=async(p,label)=>{await nextFrame();bar.style.width=p+'%';txt.textContent=label;};
@@ -1198,7 +1209,7 @@ async function boot(){
   renderer.compile(scene,camera);
   await step(100,'Ready.');
   started=true;
-  loaderEl.classList.add('hidden');   // the intro screen sits *under* the opaque loader — reveal it
+  loaderEl.classList.add('hidden');   // the intro screen sits *under* the opaque loader — reveal it; see methodology/contracts/boot-sequence.md#C-BOOT-2
   animate(performance.now());
 }
 
@@ -1207,7 +1218,7 @@ const startEl=document.getElementById('start'),loaderEl=document.getElementById(
 function lockMouse(){
   if(!renderer||locked)return;
   const p=renderer.domElement.requestPointerLock&&renderer.domElement.requestPointerLock();
-  if(p&&p.catch)p.catch(()=>{});   // Chrome returns a promise: ignore "no gesture" / "already pending"
+  if(p&&p.catch)p.catch(()=>{});   // Chrome returns a promise: ignore "no gesture" / "already pending"; see methodology/contracts/camera.md#C-CAM-5
 }
 document.getElementById('enter').addEventListener('click',e=>{
   e.stopPropagation();
@@ -1217,11 +1228,13 @@ document.getElementById('enter').addEventListener('click',e=>{
 document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===renderer.domElement;});
 // Re-acquire the mouse after Esc. The old one-liner ran while `renderer` was still undefined, so it
 // never attached and the view stayed stuck as soon as you pressed Escape once.
+// see methodology/contracts/boot-sequence.md#C-BOOT-4
 addEventListener('click',()=>{if(started&&document.body.classList.contains('playing'))lockMouse();});
 
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 
 // Any failure during generation must surface in the loader instead of leaving it frozen mid-bar.
+// see methodology/contracts/boot-sequence.md#C-BOOT-3
 boot().catch(err=>{
   console.error(err);
   const t=document.getElementById('ltxt');
