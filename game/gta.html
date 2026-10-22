@@ -464,6 +464,7 @@ function buildCity(){
       const ox=cx+(a-0.5)*(bw+gap)+ (rng()-.5)*1.5;
       const oz=cz+(b-0.5)*(bd+gap)+ (rng()-.5)*1.5;
       // фасад — наружу от центра квартала по X-оси: a=0 → запад, a=1 → восток
+      // see methodology/contracts/building-interiors.md#C-INT-4
       const facing = (a === 0) ? 'W' : 'E';
       addBuilding(ox,oz,bw,bd,h*rand(.72,1.1),facing);
     }

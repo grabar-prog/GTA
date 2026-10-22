@@ -799,6 +799,7 @@
       walls, glassLit, glassDark,
       w: W + 0.6, d: D + 1.5, h: wallY1 + roofThk + 0.6,
       // Walk-in: door gap on the local +Z face, and the lobby floor.
+      // see methodology/contracts/building-interiors.md#C-INT-1
       outerW: W + 0.4, outerD: D + 0.4,
       entries: [{ x: doorX, w: doorW }],
       interior: { hw: W / 2 - 0.1, hd: D / 2 + 0.2, floorY: baseH + 0.02, ceilY: baseH + floorH - 0.10 },
@@ -1491,6 +1492,7 @@
     // doorway on the local +Z face) get a hollow shell of four thin walls
     // with a gap for the door, plus a walkable floor rect for the lobby.
     // Builders without entries register one solid AABB — no interior.
+    // see methodology/contracts/building-interiors.md#C-INT-3
     if (colliders) {
       const oW = result.outerW || result.w;
       const oD = result.outerD || result.d;
@@ -1543,8 +1545,9 @@
                                         hd: swap ? it.hw : it.hd,
                                         h: it.floorY });
         // First-storey ceiling as a horizontal rect for the chase camera's pull-in test —
-        // see methodology/contracts/camera.md#C-CAM-6. Same footprint as the walkable so
-        // floor and ceiling stay mutually consistent.
+        // see methodology/contracts/camera.md#C-CAM-6 (camera side) and
+        // methodology/contracts/building-interiors.md#C-INT-2 (registration). Same footprint
+        // as the walkable so floor and ceiling stay mutually consistent.
         if (floorSlabs && it.ceilY != null) floorSlabs.push({ x: wx, z: wz,
                                                              hw: swap ? it.hd : it.hw,
                                                              hd: swap ? it.hw : it.hd,
