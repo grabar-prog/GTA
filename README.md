@@ -47,7 +47,6 @@ methodology/docs/        architecture map · performance internals · limitation
 methodology/handsoff.md  state at the end of the last session + open work
 AGENTS.md                entry point: working norms, repo structure, where to look
 ides/                    generated per-environment snapshots (tools/sync-ides.sh)
-journal/                 session journal, one file per sprint
 sync_models.sh           regenerate assets/models/manifest.js from ls
 LICENSE                  MIT
 harness/package.json     dev-only dependency: puppeteer-core (for the harness)

@@ -1,6 +1,6 @@
 # Handoff — MERIDIAN CITY (`game/gta.html`)
 
-State cache. Read this and nothing else to know where the project stands; `journal/` is for humans.
+State cache. Read this and nothing else to know where the project stands.
 Renewed 2026-10-22: detail lives in the contract that owns it, not here — an open question is named
 once below and written up in its owner file.
 
@@ -15,6 +15,7 @@ once below and written up in its owner file.
 - Session 2026-10-21 (committed): chase-camera pull-in in `game/gta.html` — `camClearT()` / `camBoxT()` slab test over `buildingWalls` + `parkBlockers`, orbit distance scaled by the earliest entry, `CAM_WALL_MARGIN = 0.3` / `CAM_MIN_DIST = 1.5`; new rule C-CAM-6 in [contracts/camera.md](contracts/camera.md), C-CAM-2 amended to a "nominal" orbit distance. Verified with a scratchpad rig (before: full orbit point inside two wall rects, segment crossed both; after: zero crossings); harness 24/24 green, reference numbers unchanged ([contracts/harness.md](contracts/harness.md) § Reference run).
 - Session 2026-10-22 (committed): ceiling-slab pull-in — the same C-CAM-6 invariant extended horizontally. `assets/models/building.js` builders report their first-storey underside as `ceilY`; `add()` registers it in a top-level `floorSlabs[]` (same transform and swap-aware rect as the walkable); new `camSlabT()` margin-plane crossing test folded into `camClearT()`. Verified with a scratchpad rig over all 62 walk-in lobbies: before — camera 4.6 m above the underside at pitch 1.2; after — every lobby pulled in, residual ≤ +0.25 m only where the min-distance floor wins at extreme pitch, towers fully clear. Harness 24/24 green, reference numbers unchanged ([contracts/harness.md](contracts/harness.md) § Reference run).
 - Session 2026-10-22 (committed): new contract [contracts/building-interiors.md](contracts/building-interiors.md) — C-INT-1…5 own the generation side of walk-in interiors: builder `entries`/`interior` declaration, one shared floor/slab transform in `add()`, hollow wall shell with door gaps, facade facing, camera-safe surfaces. Camera-side pull-in stays in [contracts/camera.md](contracts/camera.md) C-CAM-6; its ceiling-slab rationale now points at C-INT-2 instead of restating the data flow. Docs + comment citations only — no runtime change, harness reference numbers untouched; lint clean (58 anchors, prefix `INT` documented). AGENTS.md also fixed two stale statements: router range is C-LANE-1…7 and the retired `useLegacyLights` stopgap sentence removed.
+- Session 2026-10-22 (committed): stale references to the removed per-session log folder purged from AGENTS.md, README.md and this file — it was never tracked by git; handsoff stays the only per-session record. Docs only; lint clean.
 - Open defects in the city / traffic / camera layer: **none**. Unresolved *decisions* are not defects — see below.
 - Tooling: `tools/lint-refs.sh` is the repo linter — anchor citations, router coverage, doc links, the pinned Three.js 0.160 API in `game/gta.html`, anchor format and documented prefixes, provenance labels on run metrics, numbered TODOs (exit 0/1), green since 2026-09-20. It also reports coverage — **most anchors are uncited**, because almost no comment in `game/gta.html` cites an invariant; the few citations that exist live in `AGENTS.md` examples.
 - Since that run, docs-only edits (`AGENTS.md` as entry point, this file as a cache), one comment fix in `game/gta.html` (HUD traffic-multiplier snap is a **0.05** grid, not quarter steps), the flat-window → `window.MERIDIAN` surface migration, and the C-API-7 recalibration.
@@ -51,7 +52,6 @@ Standing workflow for any behaviour change: fix by direct edits in `game/gta.htm
 
 ## Housekeeping leads (small, none approved)
 
-- `journal/2026-09-18-bionic.md` is a byte-for-byte copy of `journal/_template.md`: placeholder headings, every cell empty, referenced by nothing. It reads like evidence and records nothing — delete it or fill it.
 - An older note claimed a "step-length regression". It was never substantiated: checks stayed green and the gait frames looked fine. Do not treat it as a bug by default.
 
 ## Files
