@@ -380,6 +380,11 @@ const walkables=[];
 // conservatory). collide() checks them exactly like city buildings. Populated
 // by buildPark; emptied by nothing — parks are built once at boot.
 const parkBlockers=[];
+// First-storey ceilings of walk-in interiors (shop/office/tower lobbies) as horizontal rects.
+// The chase camera must not rise above them between itself and the player —
+// see methodology/contracts/camera.md#C-CAM-6. Populated by MeridianBuildingKit.add
+// from each builder's interior.ceilY; emptied by nothing, like walkables.
+const floorSlabs=[];
 let streetlights=[],lampMesh=null,lampLightPool=[],lampGroup;
 // curNight хранит текущую ночь (0 — день, 1 — ночь), чтобы пул фар не
 // пересчитывал её отдельно от updateCycle. headlightPool — шесть SpotLight,
@@ -409,6 +414,7 @@ function addBuilding(cx,cz,w,d,h,facing){
     facing,
     colliders: buildingWalls,
     walkables,
+    floorSlabs,
   });
 }
 function buildCity(){
@@ -796,14 +802,15 @@ function _rectT(px,pz,ox,oz,cx,cz,hw,hd){
   else{const a=(cz-hd-pz)/oz,b=(cz+hd-pz)/oz;te=Math.max(te,a<b?a:b);tx=Math.min(tx,a<b?b:a);if(te>tx)return null;}
   return [te,tx];
 }
-// Largest t in [0,1] keeping the orbit segment P→P+t*O out of every wall rect — see C-CAM-6.
-// A line meets each rect in one interval, so the earliest entry over all rects bounds t; when the
-// player already stands inside the margin band (only possible after a car shove), the real face
-// bounds it instead of the margin.
-function camClearT(px,pz,ox,oz){
+// Largest t in [0,1] keeping the orbit segment P→P+t*O out of every wall rect and below every
+// interior ceiling slab — see C-CAM-6. A line meets each rect in one interval, so the earliest
+// entry over all rects bounds t; when the player already stands inside the margin band (only
+// possible after a car shove), the real face bounds it instead of the margin.
+function camClearT(px,pz,ox,oz,py,sp,cp){
   let t=1;
   for(const b of buildingWalls)t=Math.min(t,camBoxT(b,px,pz,ox,oz));
   for(const b of parkBlockers)t=Math.min(t,camBoxT(b,px,pz,ox,oz));
+  for(const s of floorSlabs)t=Math.min(t,camSlabT(s,px,pz,ox,oz,py,sp,cp));
   return t;
 }
 function camBoxT(b,px,pz,ox,oz){
@@ -815,6 +822,25 @@ function camBoxT(b,px,pz,ox,oz){
   if(iv[0]>0)return iv[0];
   const r=_rectT(px,pz,ox,oz,b.x,b.z,b.hw,b.hd);
   return r?r[0]:1;
+}
+// Ceiling-slab pull-in (C-CAM-6): with positive pitch the orbit rises, and a first-storey ceiling
+// between camera and player reads as "seeing through the roof". The camera path is the straight
+// 3-D segment from its min-distance point to the full-orbit point; along it both the camera height
+// and the sightline's margin-plane crossing move monotonically, so the first violation bounds t.
+function camSlabT(s,px,pz,ox,oz,py,sp,cp){
+  const m=CAM_WALL_MARGIN;
+  const B=s.y-py-m;                       // margin plane above feet: underside minus margin
+  if(sp<=0||B<=1.4)return 1;             // orbit doesn't rise / plane at-or-below head height — no clearable violation (no such slab in the city)
+  const L=Math.hypot(ox,oz);if(L<1e-6)return 1;
+  const A=L*sp/cp,c=CAM_MIN_DIST*cp/L;   // camera height gain per unit t; fraction where the min-distance floor kicks in
+  const iv=_rectT(px,pz,ox,oz,s.x,s.z,s.hw,s.hd);
+  if(!iv)return 1;                       // orbit line never over this slab
+  // Sightline from head (feet+1.4) to camera at fraction u crosses the margin plane at XZ
+  // fraction f(u)=u(B-1.4)/(0.5+A*u), increasing in u, so its inverse is single-valued.
+  const finv=v=>{const d=(B-1.4)-A*v;return d>0?0.5*v/d:Infinity};
+  const U0=Math.max((B-1.9)/A,finv(iv[0]));   // first u with camera above plane AND sightline over the slab
+  if(Math.max(U0,c)>=Math.min(1,finv(iv[1])))return 1;   // no overlap with the camera path → clear
+  return Math.max(0,U0);               // stop at first violation (below c the min-distance floor wins anyway)
 }
 
 /* ---------- moving obstacles: car OBBs and the crowd ---------- */
@@ -952,7 +978,7 @@ function updatePlayer(dt,t){
   // A wall between camera and player reads as "the game sees through buildings": pull the orbit in
   // until the whole segment is clear — see methodology/contracts/camera.md#C-CAM-6.
   const ox=Math.sin(player.yaw)*dist*cp, oz=Math.cos(player.yaw)*dist*cp;
-  const d2=Math.max(CAM_MIN_DIST,dist*camClearT(player.x,player.z,ox,oz));
+  const d2=Math.max(CAM_MIN_DIST,dist*camClearT(player.x,player.z,ox,oz,player.y,sp,cp));
   const tx=player.x+Math.sin(player.yaw)*d2*cp,
         ty=player.y+Math.max(0.35,1.9+d2*sp),
         tz=player.z+Math.cos(player.yaw)*d2*cp;
@@ -1220,7 +1246,7 @@ const MERIDIAN = {
   // World constants the assertions compare against
   GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Data — the harness mutates through the same references
-  cars, buildings, buildingWalls, trees, walkables, lampLightPool, headlightPool, player,
+  cars, buildings, buildingWalls, trees, walkables, floorSlabs, lampLightPool, headlightPool, player,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
   // Frame drivers — the sim block steps the game without the rAF loop

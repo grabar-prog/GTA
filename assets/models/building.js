@@ -801,7 +801,7 @@
       // Walk-in: door gap on the local +Z face, and the lobby floor.
       outerW: W + 0.4, outerD: D + 0.4,
       entries: [{ x: doorX, w: doorW }],
-      interior: { hw: W / 2 - 0.1, hd: D / 2 + 0.2, floorY: baseH + 0.02 },
+      interior: { hw: W / 2 - 0.1, hd: D / 2 + 0.2, floorY: baseH + 0.02, ceilY: baseH + floorH - 0.10 },
     };
   }
 
@@ -1152,7 +1152,7 @@
       w: W + 0.7, d: D + 0.7, h: wallY1 + roofThk + parH + 0.4,
       outerW: W + 0.6, outerD: D + 0.6,
       entries: [{ x: 0, w: 2.4 }],   // doorW in the builder is 2.4
-      interior: { hw: W / 2 - 0.1, hd: D / 2 + 0.3, floorY: baseH + 0.10 },
+      interior: { hw: W / 2 - 0.1, hd: D / 2 + 0.3, floorY: baseH + 0.10, ceilY: baseH + floorH - 0.25 },
     };
   }
 
@@ -1379,7 +1379,7 @@
       h: parY0 + mechH + antH + 0.4,
       outerW: W1 + 0.6, outerD: D1 + 0.6,
       entries: [{ x: 0, w: 3.0 }],   // doorW in the builder is 3.0
-      interior: { hw: W1 / 2 - 0.3, hd: D1 / 2 + 0.3, floorY: yBase + 0.10 },
+      interior: { hw: W1 / 2 - 0.3, hd: D1 / 2 + 0.3, floorY: yBase + 0.10, ceilY: yBase + gfH - 0.25 },
     };
   }
 
@@ -1414,7 +1414,7 @@
   function add(opts) {
     THREE = opts.THREE;
     const { geom, scene, materials, cx, cz, rng, buildings,
-            colliders, walkables } = opts;
+            colliders, walkables, floorSlabs } = opts;
     if (!THREE || !geom || !scene) throw new Error('MeridianBuildingKit.add: THREE, geom, scene required');
     if (!materials || !materials.solid) throw new Error('MeridianBuildingKit.add: materials.solid required');
 
@@ -1533,15 +1533,22 @@
         colliders.push({ x: cx, z: cz, hw: hwO, hd: hdO });
       }
 
-      if (result.interior && walkables) {
+      if (result.interior) {
         const it = result.interior;
         const ix = it.x || 0, iz = it.z || 0;
         const wx = cx + ix * cosY + iz * sinY;
         const wz = cz - ix * sinY + iz * cosY;
-        walkables.push({ x: wx, z: wz,
-                         hw: swap ? it.hd : it.hw,
-                         hd: swap ? it.hw : it.hd,
-                         h: it.floorY });
+        if (walkables) walkables.push({ x: wx, z: wz,
+                                        hw: swap ? it.hd : it.hw,
+                                        hd: swap ? it.hw : it.hd,
+                                        h: it.floorY });
+        // First-storey ceiling as a horizontal rect for the chase camera's pull-in test —
+        // see methodology/contracts/camera.md#C-CAM-6. Same footprint as the walkable so
+        // floor and ceiling stay mutually consistent.
+        if (floorSlabs && it.ceilY != null) floorSlabs.push({ x: wx, z: wz,
+                                                             hw: swap ? it.hd : it.hw,
+                                                             hd: swap ? it.hw : it.hd,
+                                                             y: it.ceilY });
       }
     }
 
