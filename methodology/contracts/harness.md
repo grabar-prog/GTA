@@ -2,7 +2,7 @@
 
 **Reading rule:** the *Rules* block is enough for review, triage and harness runs. Everything under *Rationale* — environment troubleshooting, output shape, reference numbers, the check table — is read only when a check fails, when editing the harness, or when changing behaviour it gates.
 
-`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **24 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
+`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **25 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
 
 ## Rules — read always
 
@@ -26,10 +26,10 @@
 
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
-- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 24/24 PASS, exit 0, wall time ≈37 s under SwiftShader (generation alone 8.70 s).
+- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 25/25 PASS, exit 0, wall time ≈36 s under SwiftShader (generation alone 11.0 s; genMs is machine-bound).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
-- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (24 checks) are different programs with different measurement points. Always state which version a number came from.
+- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (25 checks) are different programs with different measurement points. Always state which version a number came from.
 - **Thresholds are contracts:** amend them with a reason ([README.md](README.md)), never silently relax; the seeded RNG is contractual, so reference numbers move whenever generation order changes.
 - **Console noise that is normal:** 4× Edge *"Tracking Prevention blocked access to storage for …unpkg.com/three@0.160…"*; FPS ≈8 under SwiftShader at 1280×760 with shadows (player speed stays correct because `dt` is clamped to 0.05 s).
 
@@ -43,7 +43,7 @@
 | `NODE_PATH` | Result | Verified on |
 |---|---|---|
 | `C:/Users/user/.lmstudio/scratchpads/c/node_modules` | ✅ works | old 8-check `tools/check-city.js`, exit 0, ~18 s |
-| `<project>/harness/node_modules` | ❌ `Code: 0`, ~0.3 s | current 23-check `harness/check-city.js` |
+| `<project>/harness/node_modules` | ❌ `Code: 0`, ~0.3 s | current `harness/check-city.js` |
 
 `NODE_PATH=` helps but is not universal — what matters is **where** it points: scratchpad (allowed by the sandbox) or project (forbidden). `EDGE_PATH=` is a separate concern and only matters when the browser binary cannot be found.
 
@@ -87,7 +87,7 @@ Browser flags: `--no-sandbox --enable-unsafe-swiftshader --use-angle=swiftshader
 
 ### Output shape
 
-stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshots -> <OUTDIR>`. The blob is assembled at [`harness/check-city.js:293`](../../harness/check-city.js): `{ html, genMs, stats, spawn, sim, cam, cycle, shots, errs }`.
+stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshots -> <OUTDIR>`. The blob is assembled at [`harness/check-city.js:495`](../../harness/check-city.js): `{ html, genMs, stats, spawn, sim, cam, cycle, shots, lobby, errs }`.
 
 | Field | Contents |
 | --- | --- |
@@ -99,16 +99,17 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `cam` | camera `y` keyed by each tested pitch (`-1.35 … +1.2`) — the evidence for [camera.md](camera.md) |
 | `cycle` | `{ night, day }`, each `{ emissive, moon, lamps }` at `dayTime = 0.83 / 0.42` |
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
+| `lobby` | check 25 sweep over the walk-in lobbies: `lobbies`, `orphanSlabs`, `poses`, `pulledIn`, `wallHits`, `slabHits`, `minCeilClearance`, `firstHit` — evidence for [camera.md](camera.md) C-CAM-6 |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (verified@HEAD-2026-10-21)
+### Reference run (verified@HEAD-2026-10-26)
 
-This is the **current** harness (`harness/check-city.js`, 24 checks). These numbers describe the tree with the building-interior fixes in `assets/models/building.js` (viewer previews, office base course + lift backing slab, tower lobby lining removal) and the per-building collision shells / facade facing in `game/gta.html`.
+This is the **current** harness (`harness/check-city.js`, 25 checks). These numbers describe the tree with the building-interior fixes in `assets/models/building.js` (viewer previews, office base course + lift backing slab, tower lobby lining removal), the per-building collision shells / facade facing in `game/gta.html`, and the check-25 lobby camera sweep.
 
 ```
-verified@HEAD 2026-10-21 (24/24 PASS, exit 0, wall ≈ 37 s under SwiftShader)
+verified@HEAD 2026-10-26 (25/25 PASS, exit 0, wall ≈ 36 s under SwiftShader)
 
-genMs 8700   calls 170   tris 668644   geoms 981
+genMs 10983   calls 170   tris 668644   geoms 981
 meshesInScene 1222   buildings 318   trees 37   errs []
 fleet {pickup:18, sedan:16, bus:22, semi:26, hatch:17, artbus:9, suv:12, van:10} = 130 (whole park)
 kinds {car:73, bus:31, semi:26} = 130   artic 9   longest 17.5
@@ -123,9 +124,10 @@ cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps
 shots: semi L=16.4 w=8 · artbus L=17.5 w=6 · bus L=12 w=4
 check24 (setTrafficMult round-trip): same-axis overlaps 0 / 0 · maxPen 0
+check25 (lobby camera safety): 62 lobbies, 9920 poses, pulled in 5307, hits 0, minCeilClearance 3.05
 ```
 
-Draw-call and triangle counts are viewpoint-dependent (frustum culling): the reference numbers describe that fixed spawn-view measurement; looking downtown costs a few hundred calls.
+Draw-call and triangle counts are viewpoint-dependent (frustum culling): the reference numbers describe that fixed spawn-view measurement; looking downtown costs a few hundred calls. `genMs` is machine-bound — it moves with the box, not the tree; every other number in the block is deterministic under the seeded RNG.
 
 #### Earlier reference (8-check harness, pre-split) — for orientation only
 
@@ -135,7 +137,7 @@ genMs 1765 · day { calls 400, tris 42498, geoms 567, buildings 337 } · errs []
 8/8 checks PASS · screenshots → D:\tmp\meridian-check
 ```
 
-Do not compare with the 23-check reference: different check set, different measurement points, different harness code.
+Do not compare with the current reference: different check set, different measurement points, different harness code.
 
 ### The checks
 
@@ -165,6 +167,7 @@ Do not compare with the 23-check reference: different check set, different measu
 | 22 | no vehicle frozen for good | `deadlockCars === 0 && gridlockAt < 0` | right-of-way C-ROW-5 |
 | 23 | a held vehicle stops before the box it was denied | `sim.heldNoseMax <= 0.6` | right-of-way C-ROW-6 |
 | 24 | reseat after a multiplier raise leaves no overlap, same- or cross-axis | `reseat.atMax.same === 0 && reseat.atMax.cross === 0 && reseat.backTo1.same === 0 && reseat.backTo1.cross === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
+| 25 | lobby camera safety: no wall/slab between camera and player | `lobby.wallHits === 0 && lobby.slabHits === 0`, `orphanSlabs === 0`, `minCeilClearance > 1.7` | [camera.md](camera.md) C-CAM-6 · [building-interiors.md](building-interiors.md) C-INT-2/5 |
 
 ### How the traffic audit works (and why it must stay this way)
 

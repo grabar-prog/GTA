@@ -2,7 +2,7 @@
 
 Procedural third-person sandbox city in **one self-contained HTML file**. No build step, no assets: every texture is painted into a canvas at runtime, every mesh is generated from code. Opens straight from `file://`.
 
-![stack](https://img.shields.io/badge/Three.js-0.160-orange) ![file](https://img.shields.io/badge/single%20file-gta.html-green) ![checks](https://img.shields.io/badge/harness-24%20checks-brightgreen) ![license](https://img.shields.io/badge/license-MIT-green)
+![stack](https://img.shields.io/badge/Three.js-0.160-orange) ![file](https://img.shields.io/badge/single%20file-gta.html-green) ![checks](https://img.shields.io/badge/harness-25%20checks-brightgreen) ![license](https://img.shields.io/badge/license-MIT-green)
 
 ## Run it
 
@@ -41,7 +41,7 @@ assets/models/           one file per model:
                          _loader.js       — document.write loader for manifest.js
 assets/viewer.html       asset browser — one page for every model, cycles animations
 assets/diagnostic.html   checks every registered model in a browser tab (no canvas)
-harness/check-city.js    headless harness: loads the page, asserts 24 checks, prints JSON + screenshots
+harness/check-city.js    headless harness: loads the page, asserts 25 checks, prints JSON + screenshots
 methodology/contracts/   formal, testable behaviour specs (see methodology/contracts/README.md)
 methodology/docs/        architecture map · performance internals · limitations in detail
 methodology/handsoff.md  state at the end of the last session + open work
@@ -63,7 +63,7 @@ node harness/check-city.js              # from the repo root; NODE_PATH=…/node
 # env: EDGE_PATH=<path to msedge.exe>   OUTDIR=<screenshot dir>, default %TEMP%\meridian-check
 ```
 
-Exit `0` = all checks green, `1` = a check failed, `2` = harness crashed. The run prints one JSON blob (`genMs`, `stats`, `spawn`, `sim`, `cam`, `cycle`, `shots`, `errs`) followed by the 24 PASS/FAIL lines. Reference numbers and thresholds live in [methodology/contracts/harness.md](methodology/contracts/harness.md).
+Exit `0` = all checks green, `1` = a check failed, `2` = harness crashed. The run prints one JSON blob (`genMs`, `stats`, `spawn`, `sim`, `cam`, `cycle`, `shots`, `lobby`, `errs`) followed by the 25 PASS/FAIL lines. Reference numbers and thresholds live in [methodology/contracts/harness.md](methodology/contracts/harness.md).
 
 ~10 minutes of the traffic audit is a pure `updateCars(0.05)` loop with no rendering — that is what proves lane-keeping, right-of-way arbitration and the absence of gridlock.
 

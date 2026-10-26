@@ -71,7 +71,7 @@ routing table's *Contents* column describes what a file holds permanently — ne
 | where is that section of `game/gta.html`?, load order, seeded RNG | [methodology/docs/architecture.md](<methodology/docs/architecture.md>) | line-numbered code map — re-derived live, authoritative |
 | FPS, draw calls, geometry-merge budget, shadows, frame-loop throttling | [methodology/docs/performance.md](<methodology/docs/performance.md>) | ground apron/UV squeeze, `normalBias` |
 | known limitation, cost to fix, "if picked up" | [methodology/docs/limitations.md](<methodology/docs/limitations.md>) | ordered list |
-| harness: running it, asserts, exit codes, stdout shape, browser flags | [methodology/contracts/harness.md](<methodology/contracts/harness.md>) | 24 checks, reference run |
+| harness: running it, asserts, exit codes, stdout shape, browser flags | [methodology/contracts/harness.md](<methodology/contracts/harness.md>) | 25 checks, reference run |
 | what next, open question, state at the last verified change | [methodology/handsoff.md](<methodology/handsoff.md>) | state cache + the one-line index of open questions |
 
 Every invariant carries an anchor you can cite from a comment (`// see methodology/contracts/camera.md#C-CAM-1`).

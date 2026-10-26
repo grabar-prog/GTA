@@ -10,7 +10,7 @@
 - **C-INT-4** Doors face the street: `addBuilding()` passes a per-lot `facing`, and `FACING_YAW` rotates the whole building so its local +Z (door) face points away from the block centre — never into the block or across the lot.
 - **C-INT-5** Every surface bounding the lobby volume is registered as a wall rect (`buildingWalls`) or a slab (`floorSlabs`), so the chase camera's pull-in keeps it outside the building: walls by pure-XZ test, slabs when looking up. The camera-side invariant and its numbers live in [camera.md](camera.md) C-CAM-6; this contract owns what generation must produce for it to hold.
 
-Verify: code review of `assets/models/building.js` — grep `interior:` finds exactly three builders (shop, office, tower), each with all four fields and an `entries` list; the registration block in `add()` is the only building-side writer of `walkables`/`floorSlabs`. Harness check 3 + the `cam` block must stay green after any change here. Manual feel test — walk into a shop, office or tower doorway and look up: no clipping through walls or ceiling.
+Verify: code review of `assets/models/building.js` — grep `interior:` finds exactly three builders (shop, office, tower), each with all four fields and an `entries` list; the registration block in `add()` is the only building-side writer of `walkables`/`floorSlabs`. Harness checks 3 and 25 (lobby camera safety) plus the `cam` block must stay green after any change here. Manual feel test — walk into a shop, office or tower doorway and look up: no clipping through walls or ceiling.
 
 ## Rationale & examples — read only when editing that rule
 

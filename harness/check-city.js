@@ -334,6 +334,110 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
     return { atMax, backTo1 };
   });
 
+  // ---- check 25: lobby camera safety --------------------------------------
+  // MERIDIAN_CHECK25
+  // Promotes the scratchpad rig that verified the wall and slab pull-in to a permanent check.
+  // see methodology/contracts/camera.md#C-CAM-6 (camera side) and
+  // methodology/contracts/building-interiors.md#C-INT-2 (lobby = walkable floor + co-located slab).
+  // For every lobby a virtual player stands at the lobby centre; the orbit is swept over pitch × yaw ×
+  // {walk, sprint} distance exactly like the frame loop, pulled in by the game's own camClearT(). The
+  // oracle below is independent of that function: it re-tests the final camera against the raw rects and
+  // slabs, so an under-pull (a regression in camBoxT/camSlabT or a dropped registration) fails here instead
+  // of reading as "seeing through buildings".
+  const lobby = await page.evaluate((PITCHES) => {
+    const { walkables, floorSlabs, buildingWalls, parkBlockers, camClearT, CAM_WALL_MARGIN, CAM_MIN_DIST } = MERIDIAN;
+    const fail = (msg) => ({ error: msg, lobbies: 0, orphanSlabs: -1, poses: 0, pulledIn: 0, wallHits: 0, slabHits: 0, minCeilClearance: 0 });
+    if (!camClearT || typeof CAM_WALL_MARGIN !== 'number' || !Array.isArray(parkBlockers))
+      return fail('camClearT / camera constants not exposed on window.MERIDIAN');
+
+    // C-INT-2: floor and slab share one footprint — a lobby is exactly such a pair. Park platforms also sit in
+    // walkables but never register a slab, so they are ignored here by construction.
+    const lobbies = [];
+    let orphanSlabs = 0;
+    for (const s of floorSlabs) {
+      const w = walkables.find(w => Math.abs(w.x - s.x) < 1e-6 && Math.abs(w.z - s.z) < 1e-6 &&
+                                   Math.abs(w.hw - s.hw) < 1e-6 && Math.abs(w.hd - s.hd) < 1e-6);
+      if (!w) { orphanSlabs++; continue; }
+      lobbies.push({ x: w.x, z: w.z, h: w.h, y: s.y });
+    }
+    if (!lobbies.length) return fail('no walk-in lobbies found');
+
+    const rects = buildingWalls.concat(parkBlockers);
+    // XZ interval of segment P→P+O against an axis-aligned rect — mirrors _rectT in game/gta.html.
+    const segRect = (px, pz, ox, oz, cx, cz, hw, hd) => {
+      let te = 0, tx = 1;
+      if (Math.abs(ox) < 1e-6) { if (Math.abs(px - cx) >= hw) return null; }
+      else { const a = (cx - hw - px) / ox, b = (cx + hw - px) / ox; te = Math.max(te, a < b ? a : b); tx = Math.min(tx, a < b ? b : a); if (te > tx) return null; }
+      if (Math.abs(oz) < 1e-6) { if (Math.abs(pz - cz) >= hd) return null; }
+      else { const a = (cz - hd - pz) / oz, b = (cz + hd - pz) / oz; te = Math.max(te, a < b ? a : b); tx = Math.min(tx, a < b ? b : a); if (te > tx) return null; }
+      return [te, tx];
+    };
+
+    const m = CAM_WALL_MARGIN;
+    // C-CAM-6 accepts one residual regime: where the CAM_MIN_DIST floor wins at extreme pitch, the camera may sit
+    // up to +0.25 m above the underside (measured office +0.248 / shop +0.218).
+    const SLAB_RESIDUAL = 0.25;   // see methodology/contracts/camera.md#C-CAM-6
+    let poses = 0, pulledIn = 0, wallHits = 0, slabHits = 0, minCeilClearance = Infinity, firstHit = null;
+
+    for (let li = 0; li < lobbies.length; li++) {
+      const L = lobbies[li];
+      const px = L.x, pz = L.z, py = L.h;
+      if (L.y - py < minCeilClearance) minCeilClearance = L.y - py;
+      // The sweep is ill-posed if the centre stands inside a collider rect — report it, do not count hits.
+      for (const r of rects) {
+        if (Math.abs(px - r.x) < r.hw && Math.abs(pz - r.z) < r.hd)
+          return fail('lobby centre (' + px.toFixed(1) + ', ' + pz.toFixed(1) + ') inside a wall rect');
+      }
+      for (const pitch of PITCHES) {
+        const sp = Math.sin(pitch), cp = Math.cos(pitch);
+        if (cp <= 1e-6) continue;   // vertical orbit — the frame loop never runs it
+        for (let k = 0; k < 16; k++) {
+          const yaw = k * Math.PI / 8;
+          // Walk and sprint orbits: pull-in is scale-free only after the min-distance floor, so test both.
+          for (const dist of [6.2, 7.4]) {
+            const ox = Math.sin(yaw) * dist * cp, oz = Math.cos(yaw) * dist * cp;
+            const d2 = Math.max(CAM_MIN_DIST, dist * camClearT(px, pz, ox, oz, py, sp, cp));
+            if (d2 < dist - 1e-9) pulledIn++;
+            const cx = px + Math.sin(yaw) * d2 * cp;
+            const cy = py + Math.max(0.35, 1.9 + d2 * sp);
+            const cz = pz + Math.cos(yaw) * d2 * cp;
+            poses++;
+
+            // Walls: the segment player→camera must not enter any collider rect before its endpoint.
+            for (const r of rects) {
+              const iv = segRect(px, pz, cx - px, cz - pz, r.x, r.z, r.hw, r.hd);
+              if (iv && iv[0] < 1 - 1e-6) {
+                wallHits++;
+                if (!firstHit) firstHit = { kind: 'wall', lobby: li, pitch, yaw, dist };
+              }
+            }
+            // Slabs: the sightline head→camera must not cross a slab's margin plane over its footprint —
+            // mirrors camSlabT's violation test on the final pose; the min-distance-floor regime is accepted only
+            // within C-CAM-6's +0.25 m residual (SLAB_RESIDUAL).
+            for (const s of floorSlabs) {
+              const planeY = s.y - m;
+              if (cy > planeY + 1e-9 && py + 1.4 < planeY) {
+                const v = (planeY - (py + 1.4)) / (cy - (py + 1.4));
+                const sx2 = px + v * (cx - px), sz2 = pz + v * (cz - pz);
+                if (Math.abs(sx2 - s.x) < s.hw && Math.abs(sz2 - s.z) < s.hd) {
+                  // Floor-won poses may sit above the margin plane — accepted only within C-CAM-6's residual.
+                  const floorWon = d2 <= CAM_MIN_DIST + 1e-9;
+                  if (!(floorWon && cy - s.y <= SLAB_RESIDUAL + 1e-6)) {
+                    slabHits++;
+                    if (!firstHit) firstHit = { kind: 'slab', lobby: li, pitch, yaw, dist };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return { lobbies: lobbies.length, orphanSlabs, poses, pulledIn, wallHits, slabHits,
+             minCeilClearance: +minCeilClearance.toFixed(2), firstHit };
+  }, PITCHES);
+
   const camYs = Object.values(cam);
   const checks = [
     ['no page errors', errs.length === 0],
@@ -380,9 +484,15 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       '; maxPen ' + reseat.atMax.maxPen + ' m)',
       reseat.atMax.same === 0 && reseat.atMax.cross === 0 &&
       reseat.backTo1.same === 0 && reseat.backTo1.cross === 0],
+    // ---- check 25: lobby camera safety (C-CAM-6 / C-INT) -------------------
+    ['lobby camera safety: no wall/slab between camera and player (' + (lobby.error ? lobby.error :
+      lobby.lobbies + ' lobbies, ' + lobby.poses + ' poses, pulled in ' + lobby.pulledIn +
+      ', hits ' + (lobby.wallHits + lobby.slabHits) + ')'),
+      !lobby.error && lobby.orphanSlabs === 0 && lobby.minCeilClearance > 1.7 &&
+      lobby.wallHits === 0 && lobby.slabHits === 0],
   ];
 
-  console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, errs }, null, 2));
+  console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, lobby, errs }, null, 2));
   // ANSI colors: 32 = green, 31 = red, 1 = bold, 0 = reset.
   // Respect NO_COLOR (https://no-color.org/) and only colorize when stdout is a TTY,
   // so redirected/piped output stays clean for CI logs.

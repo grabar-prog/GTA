@@ -1260,9 +1260,12 @@ const MERIDIAN = {
   // World constants the assertions compare against
   GRID, CELL, ROAD, HALF, GROUND_APRON,
   // Data — the harness mutates through the same references
-  cars, buildings, buildingWalls, trees, walkables, floorSlabs, lampLightPool, headlightPool, player,
+  cars, buildings, buildingWalls, parkBlockers, trees, walkables, floorSlabs, lampLightPool, headlightPool, player,
   // Helpers the right-of-way audit calls directly
   halfX, halfZ,
+  // Camera pull-in group — check 25 re-runs the frame loop's orbit math per lobby
+  // see methodology/contracts/camera.md#C-CAM-6
+  camClearT, CAM_WALL_MARGIN, CAM_MIN_DIST,
   // Frame drivers — the sim block steps the game without the rAF loop
   updateCars, updatePeds, updatePlayer, updateCycle, drawMinimap,
   // Material the day/night cycle check reads
