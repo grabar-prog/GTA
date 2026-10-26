@@ -7,7 +7,7 @@ Functions involved (`game/gta.html`): `crossState()`, `arbitrateCrossings()`, `c
 ## Rules — read always
 
 - **C-ROW-1** Priority is positional only: (1) already inside the box → earliest arriver, (2) time-to-line at cruise speed, (3) right of way, (4) `id`. It must **never** depend on current speed — braking would hand over the right of way in a circle.
-- **C-ROW-2** `bodyGap()` counts obstacles only *in front*: `if (dF + oF <= 0) continue;` — a competitor behind our nose is not an obstacle.
+- **C-ROW-2** `bodyGap()` counts obstacles only *in front*: `if (dF <= 0) continue;` — a competitor whose centre is at or behind ours is not an obstacle.
 - **C-ROW-3** One shared `xs.list` per crossing hand, referenced by every vehicle — never a copy per car, or `roomToClear()` sees only itself and each car declares the box free.
 - **C-ROW-4** `clearance()` measures both legs to a single point P (the intersection of the lane axes), not "how far the opponent still has to go along its own line".
 - **C-ROW-5** All three liveliness guards are required: `roomToClear()`, the `STALL_HOLD` escape, and `unstickCars()` (`UNSTICK_S`). Remove any one and intersections swallow traffic within minutes.
@@ -26,10 +26,12 @@ Speed-dependent priority is the classic livelock this whole block exists to prev
 ### C-ROW-2 — `bodyGap()` counts obstacles only *in front*
 
 ```js
-if (dF + oF <= 0) continue;   // competitor behind our nose is not an obstacle
+if (dF <= 0) continue;   // competitor whose centre is at or behind ours is not an obstacle
 ```
 
 The tempting "robust" version with `Math.abs(dF)` hooked every vehicle to **its own tail**: `dmin = L + 3.5` exceeds a typical lane interval, so one fictitious barrier *behind* the nose zeroed the pull forever. That state had **20 of 52 vehicles frozen** (`deadlockCars=30`, `stuckFraction 0.43`, gridlock after 123 s).
+
+**Amended 2026-10-26 (quote catch-up).** The guard itself changed on 2026-09-29 ('bodyGap same-axis front test by centre'): `dF + oF <= 0` → `dF <= 0`. The old form counted an overlapping trailing car as a forward obstacle and locked both cars in place — unstickCars does not handle same-axis overlaps. This rule's quote now matches the code; the invariant (front only) is unchanged.
 
 ### C-ROW-3 — One shared array per crossing, not a copy per car
 

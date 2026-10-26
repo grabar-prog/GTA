@@ -8,9 +8,9 @@
 - **C-INT-2** `add()` registers each declared interior once from one shared transform: a walkable rect (top = `floorY`) into the caller's `walkables` list and — only when `ceilY != null` — a slab rect (underside = `ceilY`) into `floorSlabs`, both centred on the building centre plus any local offset `(x, z)`, rotated by yaw and swap-aware (`swap = |sinY| > 0.5`). Floor and slab share one footprint so they stay mutually consistent.
 - **C-INT-3** A building with `entries` gets a hollow collision shell in the caller's collider list (the city passes `buildingWalls`): four thin wall rects of thickness `WALL_T = 0.35` along the `outerW/outerD` footprint, front face split into segments by door gaps; each gap is widened ±0.30 m beyond the visible door so a body of radius `PLAYER_R = 0.5` passes at walking speed. A building without entries registers one solid AABB in the same list.
 - **C-INT-4** Doors face the street: `addBuilding()` passes a per-lot `facing`, and `FACING_YAW` rotates the whole building so its local +Z (door) face points away from the block centre — never into the block or across the lot.
-- **C-INT-5** Every surface bounding the lobby volume is registered as a wall rect (`buildingWalls`) or a slab (`floorSlabs`), so the chase camera's pull-in keeps it outside the building: walls by pure-XZ test, slabs when looking up. The camera-side invariant and its numbers live in [camera.md](camera.md) C-CAM-6; this contract owns what generation must produce for it to hold.
+- **C-INT-5** Every surface bounding the lobby volume is registered as a wall rect (`buildingWalls`) or a slab (`floorSlabs`), so the chase camera's pull-in keeps it outside the building: walls by pure-XZ test, slabs at positive pitch (orbit rising). The camera-side invariant and its numbers live in [camera.md](camera.md) C-CAM-6; this contract owns what generation must produce for it to hold.
 
-Verify: code review of `assets/models/building.js` — grep `interior:` finds exactly three builders (shop, office, tower), each with all four fields and an `entries` list; the registration block in `add()` is the only building-side writer of `walkables`/`floorSlabs`. Harness checks 3 and 25 (lobby camera safety) plus the `cam` block must stay green after any change here. Manual feel test — walk into a shop, office or tower doorway and look up: no clipping through walls or ceiling.
+Verify: code review of `assets/models/building.js` — grep `interior:` finds exactly three builders (shop, office, tower), each with all four fields and an `entries` list; the registration block in `add()` is the only building-side writer of `walkables`/`floorSlabs`. Harness checks 3 and 25 (lobby camera safety) plus the `cam` block must stay green after any change here. Manual feel test — walk into a shop, office or tower doorway and sweep the camera from low to high positive pitch: no clipping through walls (low) or ceiling (high).
 
 ## Rationale & examples — read only when editing that rule
 
@@ -29,7 +29,7 @@ In all three builders `hd` equals the shell half-depth (`outerD / 2`), so the wa
 Failure modes this shape guards against:
 
 - a builder that builds a doorway but omits `entries` gets a solid AABB collider over its whole footprint — the door is visible and unenterable, silently;
-- an interior declared without `ceilY` registers a walkable floor but no slab (C-INT-2), so C-CAM-6 loses its ceiling bound for that lobby: looking up puts the camera through the first-storey ceiling again.
+- an interior declared without `ceilY` registers a walkable floor but no slab (C-INT-2), so C-CAM-6 loses its ceiling bound for that lobby: raising the camera (positive pitch) puts it through the first-storey ceiling again.
 
 ### C-INT-2 — One shared transform for floor and ceiling
 
@@ -89,6 +89,6 @@ Each lot in the 2×2 block cluster gets `facing` from its column (`a`): the door
 
 ### C-INT-5 — Camera-safe interiors
 
-The chase camera orbits behind the player at up to ~7.4 m; inside a lobby most of that orbit lies outside the building, so without registration the view reads as "the game sees through walls and ceilings". The generation-side obligation is total: every surface bounding the lobby volume must exist in one of the two lists C-CAM-6 tests — vertical surfaces as wall rects (pure-XZ test), horizontal undersides as slabs (binds only when looking up). Adding a new walk-in type or a second storey means registering its walls and each ceiling underside, not just the visible geometry.
+The chase camera orbits behind the player at up to ~7.4 m; inside a lobby most of that orbit lies outside the building, so without registration the view reads as "the game sees through walls and ceilings". The generation-side obligation is total: every surface bounding the lobby volume must exist in one of the two lists C-CAM-6 tests — vertical surfaces as wall rects (pure-XZ test), horizontal undersides as slabs (binds only at positive pitch — orbit rising). Adding a new walk-in type or a second storey means registering its walls and each ceiling underside, not just the visible geometry.
 
 The camera-side invariant, margins (`CAM_WALL_MARGIN = 0.3`, `CAM_MIN_DIST = 1.5`) and the measured pull-in numbers are owned by [camera.md](camera.md) C-CAM-6 — this contract does not restate them.
