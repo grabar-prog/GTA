@@ -48,6 +48,10 @@ to another mid-block — that breaks the invariant that a car's perpendicular co
 several harness checks would need rethinking, not just relaxing (see [`../contracts/README.md`](../contracts/README.md)
 on amending rather than relaxing).
 
+**Same-axis queue compression: a follower can brake into the leader's tail by up to ~2.75 m.** In dense queues the soft collision brake (`bodyGap`) re-spaces cars after they overlap; the penetration is same-axis only, self-resolving within seconds, and never blocks cross traffic — perpendicular contacts stay 0 (harness check 21). Measured: `maxPen ≈ 2.75` m at t=0 in every reference run pre- and post RC2 (bus#13 vs semi#105); ~64–66k contact frames over the 16.7-min audit, all transient.
+
+*Cost to fix:* a proper queue model with per-class standstill gaps — out of scope for this traffic model; check 21 deliberately asserts perpendicular contacts only (see [`../contracts/right-of-way.md`](../contracts/right-of-way.md) C-ROW-6 and the harness reference run).
+
 ## Map edges
 
 **Outer road lines `0` and `GRID` sit exactly on the ground-plane border (`±290`).** The asphalt texture is

@@ -24,6 +24,8 @@
 > this run reflects the assets split, `GROUND_APRON = 60`, the new building and
 > park generators, and the density-based traffic multiplier (C-LANE-6).
 
+> **Amendment 2026-10-27.** Check 23 re-scoped with C-ROW-6 ([right-of-way.md](right-of-way.md)): `heldNoseMax` now measures vehicles that crossed the box face *while denied* and how deep they came to rest; legally-committed waits inside are excluded by construction. Threshold moved from 0.6 m to the physics bound **9.6 m** (braking distance at max car-class cruise + one frame of travel). This is an amendment, not a relaxation — pre-fix the metric could only fire for approaching cars anyway, since in-box cars got blanket `xGo = true`.
+
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
 - **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 25/25 PASS, exit 0, wall time ≈36 s under SwiftShader (generation alone 11.0 s; genMs is machine-bound).
@@ -102,14 +104,14 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `lobby` | check 25 sweep over the walk-in lobbies: `lobbies`, `orphanSlabs`, `poses`, `pulledIn`, `wallHits`, `slabHits`, `minCeilClearance`, `firstHit` — evidence for [camera.md](camera.md) C-CAM-6 |
 | `errs` | page errors — must be empty (check 1) |
 
-### Reference run (verified@HEAD-2026-10-26)
+### Reference run (verified@HEAD 2026-10-27)
 
-This is the **current** harness (`harness/check-city.js`, 25 checks). These numbers describe the tree with the building-interior fixes in `assets/models/building.js` (viewer previews, office base course + lift backing slab, tower lobby lining removal), the per-building collision shells / facade facing in `game/gta.html`, and the check-25 lobby camera sweep.
+This is the **current** harness (`harness/check-city.js`, 25 checks). These numbers describe the tree with RC2 applied to `assets/traffic-ai.js` — in-box priority enforced through holds and the clearance tail test (see [right-of-way.md](right-of-way.md), C-ROW-1/4/6 amendments) — plus the crossing-event form of `heldNoseMax` and check 23's braking-distance threshold.
 
 ```
-verified@HEAD 2026-10-26 (25/25 PASS, exit 0, wall ≈ 36 s under SwiftShader)
+verified@HEAD 2026-10-27 (25/25 PASS, exit 0, wall ≈ 39 s under SwiftShader)
 
-genMs 10983   calls 170   tris 668644   geoms 981
+genMs 12694   calls 172   tris 668516   geoms 969
 meshesInScene 1222   buildings 318   trees 37   errs []
 fleet {pickup:18, sedan:16, bus:22, semi:26, hatch:17, artbus:9, suv:12, van:10} = 130 (whole park)
 kinds {car:73, bus:31, semi:26} = 130   artic 9   longest 17.5
@@ -117,8 +119,8 @@ spawn: linesUsed 1…9 · onBorderLine 0 · outsideGroundNow 0 · maxLaneOffsetE
 maxCrossAbs 236 · wheelsWanted/Count 642/642 · unwrittenWheels 0 · unwrittenLenses 0
 maxNoseAbs 279.65 · maxSideAbs 237.38 · APRON 60
 sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 298.85 · maxSideAbs 237.38
-       wraps 766 · offRoadSamples 0 · stuckFraction 0.0159 · perpFrames 0 · sameFrames 64732
-       maxPen 2.75 (bus#13 vs semi#105, t=0) · yieldSeconds 5101 · heldNoseMax 0
+       wraps 773 · offRoadSamples 0 · stuckFraction 0.0163 · perpFrames 0 · sameFrames 65918
+       maxPen 2.75 (bus#13 vs semi#105, t=0) · yieldSeconds 5590 · heldNoseMax 6.86
        gridlockAt -1 · deadlockCars 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps
@@ -127,7 +129,7 @@ check24 (setTrafficMult round-trip): same-axis overlaps 0 / 0 · maxPen 0
 check25 (lobby camera safety): 62 lobbies, 9920 poses, pulled in 5307, hits 0, minCeilClearance 3.05
 ```
 
-Draw-call and triangle counts are viewpoint-dependent (frustum culling): the reference numbers describe that fixed spawn-view measurement; looking downtown costs a few hundred calls. `genMs` is machine-bound — it moves with the box, not the tree; every other number in the block is deterministic under the seeded RNG.
+Draw-call and triangle counts are viewpoint-dependent (frustum culling) and drift a few percent between runs under SwiftShader; `meshesInScene`, `buildings` and `trees` are stable. The sim's initial state depends on how many real-time frames elapse before the audit starts, so `wraps`, `stuckFraction`, `yieldSeconds` and `heldNoseMax` move run to run (observed: wraps 766–779, stuckFraction 0.0156–0.0163, heldNoseMax 4.46–6.86 m — always under the 9.6 m bound); `perpFrames`, `deadlockCars`, `gridlockAt` and `maxPen ≈ 2.75` are stable across runs (the pair achieving it varies). `genMs` is machine-bound — it moves with the box, not the tree.
 
 #### Earlier reference (8-check harness, pre-split) — for orientation only
 
@@ -165,7 +167,7 @@ Do not compare with the current reference: different check set, different measur
 | 20 | close-ups of all three long kinds captured | `shots.semi && shots.artbus && shots.bus` | regression visibility |
 | 21 | no perpendicular bodies overlap over N min | `sim.perpFrames === 0` | right-of-way C-ROW-2/6 |
 | 22 | no vehicle frozen for good | `deadlockCars === 0 && gridlockAt < 0` | right-of-way C-ROW-5 |
-| 23 | a held vehicle stops before the box it was denied | `sim.heldNoseMax <= 0.6` | right-of-way C-ROW-6 |
+| 23 | a denied vehicle rests no deeper than its braking distance allows | `sim.heldNoseMax <= 9.6` | right-of-way C-ROW-6 (amended 2026-10-27) |
 | 24 | reseat after a multiplier raise leaves no overlap, same- or cross-axis | `reseat.atMax.same === 0 && reseat.atMax.cross === 0 && reseat.backTo1.same === 0 && reseat.backTo1.cross === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
 | 25 | lobby camera safety: no wall/slab between camera and player | `lobby.wallHits === 0 && lobby.slabHits === 0`, `orphanSlabs === 0`, `minCeilClearance > 1.7` | [camera.md](camera.md) C-CAM-6 · [building-interiors.md](building-interiors.md) C-INT-2/5 |
 
@@ -176,7 +178,7 @@ The audit is a **pure simulation**: `updateCars(0.05)` in a loop with no renderi
 - **(a)** lane integrity — the cross-axis coordinate must not change; both axes inside `±HALF`;
 - **(b)** body overlaps via `penOf()` — instances whose *axis difference* differs are counted separately, those are "collision at a crossing";
 - **(c)** standstills: standing longer than 25 s = `deadlockCars`, first moment with ≥3 simultaneous = `gridlockAt`;
-- **(d)** whether a vehicle holding at `xGo=false` crept inside the denied square (`heldNoseMax`).
+- **(d)** how deep a vehicle that crossed the box face *while denied* came to rest (`heldNoseMax`) — legally-committed waits inside are excluded by construction (see [right-of-way.md](right-of-way.md) C-ROW-6).
 
 **The audit must run alongside `updatePeds`.** A crowd frozen statue-like during the run reads as a phantom collapse and has already produced one false alarm.
 

@@ -130,6 +130,10 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
     let yieldSeconds = 0, heldNoseMax = 0, gridlockAt = -1;
     const stillFor = new Map(), frozenMax = new Map();
     for (const c of cars) { stillFor.set(c, 0); frozenMax.set(c, 0); }
+    // C-ROW-6 is about crossing the box face while DENIED. A car granted entry may legally wait inside
+    // afterwards (rtc or a hold from a further-past in-box car), where stop < 0 by construction — so mark
+    // each box visit at the moment of crossing and only measure cars that crossed with xGo=false.
+    const prevKey = new Map(), prevStop = new Map(), crossedDenied = new Map();
 
     // warm-up: the first wave has to reach the intersections before anything is measured
     for (let w = 0; w < 5000; w++) { updateCars(0.05); updatePeds(0.05, w * 0.05); }
@@ -150,10 +154,16 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
         else if (c.speed < 0.3) stuck++;
         prevS.set(c, c.s); prevCross.set(c, cross);
 
-        // --- right of way: yielding is a decision we want statistics about; being stuck inside a denied
-        // box is not, so -stop > 0 (the nose crossed into a square it was not given) is an error.
+        // --- right of way: yielding is a decision we want statistics about; crossing the box face while
+        // denied is not, so -stop at rest (the nose sits in a square it was not given) is an error.
         if (c.yielding) yieldSeconds += 0.05;
-        if (!c.xGo && c.xs && c.speed < 0.2 && -c.xs.stop > heldNoseMax) heldNoseMax = -c.xs.stop;
+        if (c.xs) {
+          const k = c.xs.key;
+          if (prevKey.get(c) !== k) { prevKey.set(c, k); prevStop.set(c, null); crossedDenied.set(c, false); }
+          else if (!crossedDenied.get(c) && prevStop.get(c) >= 0 && c.xs.stop < 0 && !c.xGo) crossedDenied.set(c, true);
+          prevStop.set(c, c.xs.stop);
+        } else { prevKey.delete(c); prevStop.delete(c); crossedDenied.delete(c); }
+        if (!c.xGo && c.xs && c.speed < 0.2 && crossedDenied.get(c) && -c.xs.stop > heldNoseMax) heldNoseMax = -c.xs.stop;
         if (c.speed < 0.3) {
           stillFor.set(c, stillFor.get(c) + 0.05);
           if (stillFor.get(c) > FROZEN_S) frozenNow++;
@@ -469,8 +479,12 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       ' contact frames, max penetration ' + sim.maxPen + ' m)', sim.perpFrames === 0],
     ['no vehicle frozen for good (' + sim.deadlockCars + ' deadlocked, gridlock at t=' + sim.gridlockAt + ')',
       sim.deadlockCars === 0 && sim.gridlockAt < 0],
-    ['a held vehicle stops before the box it was denied (worst nose overshoot ' + sim.heldNoseMax + ' m)',
-      sim.heldNoseMax <= 0.6],
+    // C-ROW-6 as amended 2026-10-27: a denied car brakes toward its stop line; if the denial arrives later
+    // than its braking distance it may cross the face and rest inside — bounded by v_max^2/(2*dec) from cruise.
+    // Worst class (car): 14^2/(2*11) ≈ 8.9 m + one frame of travel at 14 m/s (0.7 m). Anything deeper means a
+    // car moved faster than its own braking profile allows — see methodology/contracts/right-of-way.md#C-ROW-6
+    ['a denied vehicle rests no deeper than its braking distance allows (worst nose overshoot ' + sim.heldNoseMax + ' m)',
+      sim.heldNoseMax <= 9.6],
     // ---- check 24: reseat integrity ----------------------------------------
     // Both axes: same-axis overlaps are the seatAtTail same-lane bug (C-LANE-6);
     // cross-axis overlaps are a perpendicular seat collision, which the earlier

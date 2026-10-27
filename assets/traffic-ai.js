@@ -221,7 +221,9 @@
       if (dC < -c.hl - o.hw || dC > CROSS_LOOK + 30) return -Infinity;
       const tClear = (dC + c.hl + o.hw) / Math.max(c.cruise, 0.5) + CLEAR_MARGIN;
       const dO = (laneCoord(c) - o.s) * o.dir;
-      if (dO <= 0) return -Infinity;
+      // Keep holding while any part of the opponent's body still straddles our lane line — a semi
+      // whose centre has passed P leaves 8 m of trailer across it. see methodology/contracts/right-of-way.md#C-ROW-4
+      if (dO + o.hl <= 0) return -Infinity;
       return tClear - Math.max(dO - o.hl, 0) / Math.max(o.cruise, 0.5);
     }
 
@@ -328,7 +330,10 @@
           return a.id - b.id;
         });
         for (const c of list) {
-          if (c._inBox) { c.xGo = true; continue; }
+          // No blanket xGo for in-box cars — they go through the same hold loop. The sort above
+          // already orders them first (most-past-P first), so an in-box car is held only by another
+          // in-box car further past P: "in-box first" priority, enforced geometrically instead of
+          // granted wholesale. see methodology/contracts/right-of-way.md#C-ROW-1
           let hold = -Infinity;
           for (let j = 0; j < list.length; j++) {
             const o = list[j];
