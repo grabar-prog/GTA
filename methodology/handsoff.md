@@ -1,12 +1,13 @@
 # Handoff — MERIDIAN CITY (`game/gta.html`)
 
 State cache. Read this and nothing else to know where the project stands.
-Renewed 2026-10-26: detail lives in the contract that owns it, not here — an open question is named
+Renewed 2026-10-27: detail lives in the contract that owns it, not here — an open question is named
 once below and written up in its owner file.
 
 ## Where we are
 
-- Gate: **all 25 checks green, exit 0**, verified@HEAD-2026-10-26 — check 25 (lobby camera safety) added to the gate; deterministic reference numbers unchanged since 2026-10-21, `genMs` is machine-bound. Reference JSON and canonical commands: [contracts/harness.md](contracts/harness.md).
+- Gate: **all 25 checks green, exit 0**, verified@HEAD 2026-10-27 — check 23 re-scoped to C-ROW-6's braking-distance bound (threshold 9.6 m); reference numbers refreshed with RC2 and run-to-run drift documented in [contracts/harness.md](contracts/harness.md). `genMs` is machine-bound.
+- Session 2026-10-27 (committed, `ffa1ba2`): max-traffic T-bone fix — RC2 in `assets/traffic-ai.js`: the blanket in-box exemption deleted from `arbitrateCrossings()` (in-box priority now enforced through holds from earlier-sorted in-box cars, C-ROW-1) and the `clearance()` tail test (`dO + o.hl <= 0`, C-ROW-4). Max-density audit: perpendicular contact frames 195 → 0, deadlocked cars 2 → 0, gridlock gone. Check 23 re-scoped to crossing-event semantics with a physics-bound threshold (9.6 m = braking distance at max car-class cruise + one frame; C-ROW-6 amended — not relaxed). Same-axis transient queue compression (maxPen ≈ 2.75 m) recorded as a limitation. Reference numbers refreshed, run-to-run drift documented ([contracts/harness.md](contracts/harness.md) § Reference run); gate 25/25 green, exit 0.
 - Last verified behaviour change: chase-camera pull-in extended to ceiling slabs — no collider rect **and** no interior ceiling slab may sit between camera and player ([camera.md](contracts/camera.md) C-CAM-6 amendment); the orbit stops 0.3 m short of any wall face or slab underside, minimum distance 1.5 m. `floorSlabs[]` is populated from each builder's `ceilY`; slabs bind only at positive pitch (orbit rising). Harness reference numbers unchanged (the fixed spawn viewpoint stands on a street).
 - Previous behaviour change: `clearance()` same-axis fix — opposing cars on the same road no longer wait for each other at a crossing ([right-of-way.md](contracts/right-of-way.md) C-ROW-4 amendment).
 - Last visual change: physical light model (C-API-7 resolved) — [render-api.md](contracts/render-api.md) § Recalibration. Night and mid-distance walls are intentionally brighter than the pre-r155 baseline; harness reference numbers unchanged.
