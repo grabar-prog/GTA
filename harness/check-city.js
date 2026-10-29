@@ -12,6 +12,8 @@
  *   · TRAFFIC STAYS ON THE MAP: cars only use interior road lines 1…GRID-1 (lines 0 and GRID lie
  *     exactly on the border of the ground plane), never drift out of their lane, and wrap around at
  *     ±HALF instead of driving past the last pixel of asphalt.
+ *   · MAX-DENSITY TRAFFIC (mult 2.5 — every car in the park active): the same right-of-way invariants hold —
+ *     no perpendicular overlap, no deadlock or gridlock, traffic stays on its lane lines.
  *   · LONG VEHICLES (city bus / articulated bus / euro semi-trailer): the fleet really contains them,
  *     every instanced wheel/lens buffer is sized to the mix (no instance left parked at the origin),
  *     and a 17 m body wrapping at ±HALF still stands on ground (|nose| ≤ HALF + GROUND_APRON).
@@ -194,6 +196,97 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       perpFrames, sameFrames, maxPen: +maxPen.toFixed(3), maxPenEv,
       yieldSeconds: Math.round(yieldSeconds), heldNoseMax: +heldNoseMax.toFixed(2), gridlockAt,
       deadlockCars: [...frozenMax.values()].filter(v => v > FROZEN_S).length,
+    };
+  }, SIM_STEPS);
+
+  // ---- check 26: max-density traffic audit ---------------------------------
+  // The default-density run above never activates all 130 cars — and the T-bones + gridlock that RC2 fixed
+  // only reproduced at mult 2.5 (C-LANE-6), so checks 21–23's invariants are re-run with every car active.
+  // heldNoseMax is measured but not thresholded here: under congestion a denied-crosser usually stops behind
+  // a queue, so rest depth measures queue position, not braking overshoot — C-ROW-6's bound stays enforced
+  // where the metric is clean (check 23). Liveness is gated on frozenAtEnd, not deadlockCars: congestion
+  // legitimately holds a car up to ~30 s, while a truly deadlocked car is still stopped at the last step.
+  const simMax = await page.evaluate((STEPS) => {
+    const { cars, halfX, halfZ, updateCars, updatePeds, HALF, trafficAI } = MERIDIAN;
+    if (!trafficAI || typeof trafficAI.setTrafficMult !== 'function')
+      return { error: 'trafficAI not exposed on window.MERIDIAN' };
+    const penOf = (p, q) => {
+      const ox = halfX(p) + halfX(q) - Math.abs(p.x - q.x), oz = halfZ(p) + halfZ(q) - Math.abs(p.z - q.z);
+      return (ox > 0 && oz > 0) ? Math.min(ox, oz) : 0;
+    };
+    const tagOf = c => c.type.name + '#' + cars.indexOf(c);
+    const FROZEN_S = 25;                        // same standstill threshold as the default-density audit
+    let perpFrames = 0, sameFrames = 0, maxPen = 0, maxPenEv = null;
+    let heldNoseMax = 0, gridlockAt = -1, wraps = 0, offRoad = 0, stuck = 0;
+    const stillFor = new Map(), frozenMax = new Map();
+    for (const c of cars) { stillFor.set(c, 0); frozenMax.set(c, 0); }
+    // C-ROW-6 is about crossing the box face while DENIED — same crossing-event form as check 23.
+    const prevKey = new Map(), prevStop = new Map(), crossedDenied = new Map();
+
+    const before = trafficAI.trafficMult;
+    trafficAI.setTrafficMult(2.5);              // CAR_COUNT_MAX: every car in the park is active (C-LANE-6)
+    const activeCount = cars.filter(c => c.active).length;
+    let t = 250 + STEPS * 0.05;                 // continue the ped clock from the default-density audit
+
+    for (let w = 0; w < 5000; w++) { t += 0.05; updateCars(0.05); updatePeds(0.05, t); }
+
+    const prevS = new Map(), prevCross = new Map();
+    for (const c of cars) { prevS.set(c, c.s); prevCross.set(c, c.axis === 0 ? c.x : c.z); }
+
+    for (let i = 0; i < STEPS; i++) {
+      t += 0.05; updateCars(0.05); updatePeds(0.05, t);
+      let frozenNow = 0;
+      for (const c of cars) {
+        const cross = c.axis === 0 ? c.x : c.z;
+        if (Math.abs(cross) > HALF || Math.abs(cross - prevCross.get(c)) > 1e-6) offRoad++;
+        const d = c.s - prevS.get(c);
+        if (Math.abs(d) > 25) wraps++;
+        else if (c.speed < 0.3) stuck++;
+        prevS.set(c, c.s); prevCross.set(c, cross);
+
+        if (c.xs) {
+          const k = c.xs.key;
+          if (prevKey.get(c) !== k) { prevKey.set(c, k); prevStop.set(c, null); crossedDenied.set(c, false); }
+          else if (!crossedDenied.get(c) && prevStop.get(c) >= 0 && c.xs.stop < 0 && !c.xGo) crossedDenied.set(c, true);
+          prevStop.set(c, c.xs.stop);
+        } else { prevKey.delete(c); prevStop.delete(c); crossedDenied.delete(c); }
+        if (!c.xGo && c.xs && c.speed < 0.2 && crossedDenied.get(c) && -c.xs.stop > heldNoseMax) heldNoseMax = -c.xs.stop;
+        if (c.speed < 0.3) {
+          stillFor.set(c, stillFor.get(c) + 0.05);
+          if (stillFor.get(c) > FROZEN_S) frozenNow++;
+          if (stillFor.get(c) > frozenMax.get(c)) frozenMax.set(c, stillFor.get(c));
+        } else stillFor.set(c, 0);
+      }
+      if (gridlockAt < 0 && frozenNow >= 3) gridlockAt = +(i * 0.05).toFixed(1);
+      for (let a = 0; a < cars.length; a++) {
+        const c = cars[a];
+        for (let b = a + 1; b < cars.length; b++) {
+          const o = cars[b];
+          if (Math.abs(c.x - o.x) > 25 || Math.abs(c.z - o.z) > 25) continue;
+          const pen = penOf(c, o);
+          if (pen <= 0.05) continue;                       // bodies may pass close, never merge
+          if (c.axis !== o.axis) perpFrames++; else sameFrames++;
+          if (pen > maxPen) {
+            maxPen = pen;
+            maxPenEv = { t: +(i * 0.05).toFixed(1), A: tagOf(c), B: tagOf(o), pen: +pen.toFixed(2) };
+          }
+        }
+      }
+    }
+
+    // Liveness gate for max density: nobody still frozen when the run ends. An anywhere-in-run standstill
+    // assert would flake on congestion — measured ceiling of a legitimate wait is ~30 s (29.6 s over a
+    // 4000 s mult-2.5 diagnostic, all episodes resolved), while a truly deadlocked car is still stopped at
+    // the last step; deadlockCars stays in the output as an info metric.
+    const frozenAtEnd = [...stillFor.values()].filter(v => v > FROZEN_S).length;
+
+    trafficAI.setTrafficMult(before);              // leave the scene at its original density
+    return {
+      mult: 2.5, activeCount, steps: STEPS, simMinutes: +(STEPS * 0.05 / 60).toFixed(1),
+      offRoadSamples: offRoad, wraps, stuckFraction: +(stuck / (cars.length * STEPS)).toFixed(4),
+      perpFrames, sameFrames, maxPen: +maxPen.toFixed(3), maxPenEv,
+      heldNoseMax: +heldNoseMax.toFixed(2), gridlockAt,
+      deadlockCars: [...frozenMax.values()].filter(v => v > FROZEN_S).length, frozenAtEnd,
     };
   }, SIM_STEPS);
 
@@ -504,9 +597,22 @@ const PITCHES = [-1.35, -0.6, 0, 0.6, 1.2];
       ', hits ' + (lobby.wallHits + lobby.slabHits) + ')'),
       !lobby.error && lobby.orphanSlabs === 0 && lobby.minCeilClearance > 1.7 &&
       lobby.wallHits === 0 && lobby.slabHits === 0],
+    // ---- check 26: max-density traffic audit ---------------------------------
+    // All cars active at once (mult 2.5, C-LANE-6) — the load where RC2's T-bones and gridlock reproduced;
+    // checks 21–23's invariants must hold there too. heldNoseMax and deadlockCars are informational: under
+    // congestion a denied-crosser stops behind a queue (rest depth = queue position, not braking overshoot —
+    // C-ROW-6's bound stays enforced where the metric is clean, check 23), and standstills up to ~30 s are
+    // legitimate waits. The liveness gate is frozenAtEnd: nobody still stopped > FROZEN_S at the last step.
+    ['max density (mult 2.5): ' + (simMax.error ? simMax.error :
+      simMax.activeCount + ' cars active · perp ' + simMax.perpFrames +
+      ' · deadlocked ' + simMax.deadlockCars + ' (info), gridlock t=' + simMax.gridlockAt +
+      ' · heldNose ' + simMax.heldNoseMax + ' m (info) · offRoad ' + simMax.offRoadSamples +
+      ' · frozenAtEnd ' + simMax.frozenAtEnd),
+      !simMax.error && simMax.perpFrames === 0 && simMax.gridlockAt < 0 &&
+      simMax.offRoadSamples === 0 && simMax.frozenAtEnd === 0],
   ];
 
-  console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, cam, cycle, shots, lobby, errs }, null, 2));
+  console.log(JSON.stringify({ html: HTML, genMs, stats, spawn, sim, simMax, cam, cycle, shots, lobby, errs }, null, 2));
   // ANSI colors: 32 = green, 31 = red, 1 = bold, 0 = reset.
   // Respect NO_COLOR (https://no-color.org/) and only colorize when stdout is a TTY,
   // so redirected/piped output stays clean for CI logs.
