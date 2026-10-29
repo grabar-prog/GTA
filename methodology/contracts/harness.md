@@ -2,7 +2,7 @@
 
 **Reading rule:** the *Rules* block is enough for review, triage and harness runs. Everything under *Rationale* — environment troubleshooting, output shape, reference numbers, the check table — is read only when a check fails, when editing the harness, or when changing behaviour it gates.
 
-`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **25 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
+`harness/check-city.js` loads `game/gta.html` (resolved relative to its own directory, so it works from any cwd) in headless Edge, waits for the loader to hide, collects page errors, then asserts **26 checks** and prints one JSON blob plus PASS/FAIL lines. It is the only executable spec this project has — keep it in the repo.
 
 ## Rules — read always
 
@@ -26,12 +26,14 @@
 
 > **Amendment 2026-10-27.** Check 23 re-scoped with C-ROW-6 ([right-of-way.md](right-of-way.md)): `heldNoseMax` now measures vehicles that crossed the box face *while denied* and how deep they came to rest; legally-committed waits inside are excluded by construction. Threshold moved from 0.6 m to the physics bound **9.6 m** (braking distance at max car-class cruise + one frame of travel). This is an amendment, not a relaxation — pre-fix the metric could only fire for approaching cars anyway, since in-box cars got blanket `xGo = true`.
 
+> **Amendment 2026-10-29.** Check 26 added — a max-density traffic audit that re-runs checks 21–23's invariants with every car active (mult 2.5, C-LANE-6), the load where RC2's T-bones and gridlock reproduced before `ffa1ba2` (perpFrames 195, deadlockCars 2). Its liveness gate is `frozenAtEnd === 0` — nobody still stopped > FROZEN_S at the last step — not "no standstill ever": a 4000 s mult-2.5 diagnostic shows congestion legitimately holds a car up to ~30 s (max 29.6 s, all episodes resolved), so an anywhere-in-run assert flakes on ~a quarter of runs; a truly deadlocked car is still stopped at the last step. `heldNoseMax` and `deadlockCars` are informational there — C-ROW-6's bound stays enforced where the metric is clean (check 23).
+
 
 - **Run:** `npm --prefix harness i` (puppeteer-core only), then `node harness/check-city.js` from the repo root.
-- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 25/25 PASS, exit 0, wall time ≈36 s under SwiftShader (generation alone 11.0 s; genMs is machine-bound).
+- **Exit codes:** `0` all green · `1` a check failed · `2` the harness itself crashed. Reference run: 26/26 PASS, exit 0, wall time ≈61 s under SwiftShader (generation alone ≈12.8 s; genMs is machine-bound).
 - **Screenshots never land in the repo** — `OUTDIR=%TEMP%\meridian-check\`. Hero review shots use a different rig and go to `%TEMP%\meridian-char\`.
 - **The traffic audit is a pure simulation:** `updateCars(0.05)` in a loop with no rendering, 20k steps after 5k warm-up (~12 s wall, ~16.7 simulated minutes), and it must run alongside `updatePeds` — a crowd frozen during the run reads as a phantom collapse and has already produced one false alarm.
-- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (25 checks) are different programs with different measurement points. Always state which version a number came from.
+- **Harness versions are not comparable:** `tools/check-city.js` (pre-split, 8 checks) and `harness/check-city.js` (26 checks) are different programs with different measurement points. Always state which version a number came from.
 - **Thresholds are contracts:** amend them with a reason ([README.md](README.md)), never silently relax; the seeded RNG is contractual, so reference numbers move whenever generation order changes.
 - **Console noise that is normal:** 4× Edge *"Tracking Prevention blocked access to storage for …unpkg.com/three@0.160…"*; FPS ≈8 under SwiftShader at 1280×760 with shadows (player speed stays correct because `dt` is clamped to 0.05 s).
 
@@ -89,7 +91,7 @@ Browser flags: `--no-sandbox --enable-unsafe-swiftshader --use-angle=swiftshader
 
 ### Output shape
 
-stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshots -> <OUTDIR>`. The blob is assembled at [`harness/check-city.js:495`](../../harness/check-city.js): `{ html, genMs, stats, spawn, sim, cam, cycle, shots, lobby, errs }`.
+stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshots -> <OUTDIR>`. The blob is assembled at [`harness/check-city.js:615`](../../harness/check-city.js): `{ html, genMs, stats, spawn, sim, simMax, cam, cycle, shots, lobby, errs }`.
 
 | Field | Contents |
 | --- | --- |
@@ -98,6 +100,7 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 | `stats` | `calls`, `tris`, `geoms`, `meshesInScene`, `buildings`, `trees`. Measured from one **fixed** spawn viewpoint (`player.x = CELL*4 + CELL/2`, `z = -HALF + CELL*3`, `pitch 0.15`) because draw calls depend on frustum culling — see [docs/performance.md](../docs/performance.md) |
 | `spawn` | lane and border state at t=0: `cars`, `GRID`, `HALF`, `ROAD`, `CELL`, `linesUsed`, `onBorderLine`, `outsideGroundNow`, `maxCrossAbs`, `maxLaneOffsetErr` (centre-to-centreline distance must be exactly `ROAD/4`) · fleet: `fleet` (by type name), `kinds` (by geometry builder), `longest` · instanced buffers: `wheelsWanted`, `wheelsCount`, `unwrittenWheels`, `unwrittenLenses` · `APRON` for the overhang bounds checks |
 | `sim` | traffic audit — `steps`, `simMinutes`, `maxTravelAbs`, `maxCrossAbs`, `maxNoseAbs`, `maxSideAbs`, `wraps`, `offRoadSamples`, `stuckFraction`, `perpFrames`, `sameFrames`, `maxPen` (+ `maxPenEv`: time, both tags, penetration), `yieldSeconds`, `heldNoseMax`, `gridlockAt` |
+| `simMax` | check 26's max-density audit (mult 2.5, all cars active) — `activeCount`, `perpFrames`, `sameFrames`, `maxPen` (+ `maxPenEv`), `heldNoseMax` (info), `gridlockAt`, `deadlockCars` (info), `frozenAtEnd`, `offRoadSamples`, `wraps`, `stuckFraction` |
 | `cam` | camera `y` keyed by each tested pitch (`-1.35 … +1.2`) — the evidence for [camera.md](camera.md) |
 | `cycle` | `{ night, day }`, each `{ emissive, moon, lamps }` at `dayTime = 0.83 / 0.42` |
 | `shots` | specimen found per long-vehicle shot: `{ name, L, wheels }`; `null` when that kind is absent from the fleet |
@@ -106,12 +109,12 @@ stdout is one JSON blob, then one `PASS`/`FAIL` line per check, then `screenshot
 
 ### Reference run (verified@HEAD 2026-10-27)
 
-This is the **current** harness (`harness/check-city.js`, 25 checks). These numbers describe the tree with RC2 applied to `assets/traffic-ai.js` — in-box priority enforced through holds and the clearance tail test (see [right-of-way.md](right-of-way.md), C-ROW-1/4/6 amendments) — plus the crossing-event form of `heldNoseMax` and check 23's braking-distance threshold.
+This is the **current** harness (`harness/check-city.js`, 26 checks). These numbers describe the tree with RC2 applied to `assets/traffic-ai.js` — in-box priority enforced through holds and the clearance tail test (see [right-of-way.md](right-of-way.md), C-ROW-1/4/6 amendments) — plus the crossing-event form of `heldNoseMax`, check 23's braking-distance threshold, and check 26's max-density audit.
 
 ```
-verified@HEAD 2026-10-27 (25/25 PASS, exit 0, wall ≈ 39 s under SwiftShader)
+verified@HEAD 2026-10-29 (26/26 PASS, exit 0, wall ≈ 61 s under SwiftShader)
 
-genMs 12694   calls 172   tris 668516   geoms 969
+genMs 12833   calls 170   tris 668180   geoms 1053
 meshesInScene 1222   buildings 318   trees 37   errs []
 fleet {pickup:18, sedan:16, bus:22, semi:26, hatch:17, artbus:9, suv:12, van:10} = 130 (whole park)
 kinds {car:73, bus:31, semi:26} = 130   artic 9   longest 17.5
@@ -122,6 +125,9 @@ sim (20k steps ≈ 16.7 min): maxTravelAbs 290 · maxCrossAbs 236 · maxNoseAbs 
        wraps 773 · offRoadSamples 0 · stuckFraction 0.0163 · perpFrames 0 · sameFrames 65918
        maxPen 2.75 (bus#13 vs semi#105, t=0) · yieldSeconds 5590 · heldNoseMax 6.86
        gridlockAt -1 · deadlockCars 0
+simMax (mult 2.5, all 130 cars active): perpFrames 0 · sameFrames 0 · maxPen 0 · offRoadSamples 0
+       wraps 1476 · stuckFraction 0.1252 · heldNoseMax 32.64 m (info) · gridlockAt -1
+       deadlockCars 1 (info) · frozenAtEnd 0
 cam: y = 0.35…7.68 over pitch −1.35…+1.2 (never under asphalt)
 night: emissiveIntensity 1.7, moon visible, 6 lamps on   day: emission 0, no moon, 0 lamps
 shots: semi L=16.4 w=8 · artbus L=17.5 w=6 · bus L=12 w=4
@@ -129,7 +135,7 @@ check24 (setTrafficMult round-trip): same-axis overlaps 0 / 0 · maxPen 0
 check25 (lobby camera safety): 62 lobbies, 9920 poses, pulled in 5307, hits 0, minCeilClearance 3.05
 ```
 
-Draw-call and triangle counts are viewpoint-dependent (frustum culling) and drift a few percent between runs under SwiftShader; `meshesInScene`, `buildings` and `trees` are stable. The sim's initial state depends on how many real-time frames elapse before the audit starts, so `wraps`, `stuckFraction`, `yieldSeconds` and `heldNoseMax` move run to run (observed: wraps 766–779, stuckFraction 0.0156–0.0163, heldNoseMax 4.46–6.86 m — always under the 9.6 m bound); `perpFrames`, `deadlockCars`, `gridlockAt` and `maxPen ≈ 2.75` are stable across runs (the pair achieving it varies). `genMs` is machine-bound — it moves with the box, not the tree.
+Draw-call and triangle counts are viewpoint-dependent (frustum culling) and drift a few percent between runs under SwiftShader; `meshesInScene`, `buildings` and `trees` are stable. The sim's initial state depends on how many real-time frames elapse before the audit starts, so `wraps`, `stuckFraction`, `yieldSeconds` and `heldNoseMax` move run to run (observed: wraps 766–779, stuckFraction 0.0156–0.0163, heldNoseMax 4.46–6.86 m — always under the 9.6 m bound); `perpFrames`, `deadlockCars`, `gridlockAt` and `maxPen ≈ 2.75` are stable across runs (the pair achieving it varies). `simMax` metrics share the same run-to-run variance as `sim` (its initial state is the tail of the default-density audit); its hard gates (`perpFrames`, `gridlockAt`, `offRoadSamples`, `frozenAtEnd`) are robust, while `heldNoseMax` and `deadlockCars` there are informational. `genMs` is machine-bound — it moves with the box, not the tree.
 
 #### Earlier reference (8-check harness, pre-split) — for orientation only
 
@@ -170,6 +176,7 @@ Do not compare with the current reference: different check set, different measur
 | 23 | a denied vehicle rests no deeper than its braking distance allows | `sim.heldNoseMax <= 9.6` | right-of-way C-ROW-6 (amended 2026-10-27) |
 | 24 | reseat after a multiplier raise leaves no overlap, same- or cross-axis | `reseat.atMax.same === 0 && reseat.atMax.cross === 0 && reseat.backTo1.same === 0 && reseat.backTo1.cross === 0` | [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
 | 25 | lobby camera safety: no wall/slab between camera and player | `lobby.wallHits === 0 && lobby.slabHits === 0`, `orphanSlabs === 0`, `minCeilClearance > 1.7` | [camera.md](camera.md) C-CAM-6 · [building-interiors.md](building-interiors.md) C-INT-2/5 |
+| 26 | max-density audit: no T-bones, gridlock, off-road or car still frozen at run end (mult 2.5) | `simMax.perpFrames === 0 && simMax.gridlockAt < 0 && simMax.offRoadSamples === 0 && simMax.frozenAtEnd === 0` | [right-of-way.md](right-of-way.md) C-ROW-5/6 · [traffic-lanes.md](traffic-lanes.md) C-LANE-6 |
 
 ### How the traffic audit works (and why it must stay this way)
 
@@ -179,6 +186,8 @@ The audit is a **pure simulation**: `updateCars(0.05)` in a loop with no renderi
 - **(b)** body overlaps via `penOf()` — instances whose *axis difference* differs are counted separately, those are "collision at a crossing";
 - **(c)** standstills: standing longer than 25 s = `deadlockCars`, first moment with ≥3 simultaneous = `gridlockAt`;
 - **(d)** how deep a vehicle that crossed the box face *while denied* came to rest (`heldNoseMax`) — legally-committed waits inside are excluded by construction (see [right-of-way.md](right-of-way.md) C-ROW-6).
+
+**Check 26 re-runs this same audit with every car active.** `trafficAI.setTrafficMult(2.5)` activates all 130 cars (C-LANE-6) — the load where RC2's T-bones and gridlock reproduced before `ffa1ba2` — then the identical warm-up + step loop runs, and the multiplier is restored afterwards. The hard gates are checks 21–23's invariants plus liveness: `perpFrames === 0`, `gridlockAt < 0`, `offRoadSamples === 0`, `frozenAtEnd === 0`. Liveness is deliberately *not* "no standstill > FROZEN_S anywhere in the run" (`deadlockCars`): under max-density congestion a car legitimately waits up to ~30 s behind a queue (measured over a 4000 s mult-2.5 diagnostic: 276 standstills ≥10 s, all resolved, max 29.6 s), so that assert flakes on ~a quarter of runs; a truly deadlocked car is still stopped at the last step — which `frozenAtEnd` catches with certainty while flaking at ≈0.2 % per run (Poisson estimate from the measured episode rate). `heldNoseMax` and `deadlockCars` stay in the output as info metrics; C-ROW-6's braking bound stays enforced where the metric is clean (check 23).
 
 **The audit must run alongside `updatePeds`.** A crowd frozen statue-like during the run reads as a phantom collapse and has already produced one false alarm.
 
